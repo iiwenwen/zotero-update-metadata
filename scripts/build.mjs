@@ -1,4 +1,3 @@
-import details from "../package.json" assert { type: "json" };
 import {
   Logger,
   clearFolder,
@@ -8,12 +7,15 @@ import {
 } from "./utils.mjs";
 import { zip } from "compressing";
 import { build } from "esbuild";
-import { existsSync, readdirSync, renameSync } from "fs";
+import { existsSync, readFileSync, readdirSync, renameSync } from "fs";
 import path from "path";
 import { env, exit } from "process";
 import replaceInFile from "replace-in-file";
 
 const { replaceInFileSync } = replaceInFile;
+const details = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 
 process.env.NODE_ENV =
   process.argv[2] === "production" ? "production" : "development";

@@ -1,7 +1,7 @@
 import { config } from "../package.json";
 import { getString, initLocale } from "./utils/locale";
 import { createZToolkit } from "./utils/ztoolkit";
-import { registerMenu, selectoritem } from "./modules/menu";
+import { registerMenu, selectoritem, unregisterMenu } from "./modules/menu";
 import {
   registerPrefsWindow,
   registerPrefsScripts,
@@ -63,16 +63,18 @@ async function onMainWindowLoad(win: Window): Promise<void> {
 }
 
 async function onMainWindowUnload(win: Window): Promise<void> {
+  unregisterMenu();
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();
 }
 
 function onShutdown(): void {
+  unregisterMenu();
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();
   // Remove addon object
   addon.data.alive = false;
-  delete Zotero[config.addonInstance];
+  delete (Zotero as any)[config.addonInstance];
 }
 
 /**

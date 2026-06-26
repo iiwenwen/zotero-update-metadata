@@ -1,6 +1,6 @@
 # Zotero Update Metadata
 
-[![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
+[![zotero target version](https://img.shields.io/badge/Zotero-7--9-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
 
 [![English](https://img.shields.io/badge/英文-English-blue.svg)](https://github.com/iiwenwen/zotero-update-metadata/blob/main/README.md)
@@ -21,6 +21,7 @@ This project allows you to update or save metadata for entries in Zotero directl
 ## Note
 
 - Currently only applicable to entries saved with Douban.
+- Compatibility target: Zotero 7.0 through Zotero 9.0.*.
 
 ## TODO
 
@@ -37,6 +38,23 @@ This project allows you to update or save metadata for entries in Zotero directl
 ## Disclaimer
 
 Use this code under the AGPL. No warranty is provided. Follow the laws in your region!
+
+## 42COG / Codex Workflow
+
+This project is initialized for Codex with the 42COG RCSW workflow:
+
+```text
+Init -> Real -> Cog -> Product Requirements -> User Story -> UX/UI Design -> System Architecture -> Data / Domain -> Coding -> QA -> Work / Iteration
+```
+
+Key directories:
+
+- `.42cog/`: project cognition, constraints, and iteration records
+- `spec/`: product, design, and development specifications
+- `src/`: Zotero plugin source code
+- `.codex/`: Codex project skills and local agent notes
+
+Project skills are exposed through relative symlinks from `.codex/skills/` to `.42plugin/42edu/`.
 
 ## ChangeLog
 

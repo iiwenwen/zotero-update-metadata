@@ -1,9 +1,18 @@
-import { getPref } from "../utils/prefs";
 import { getString } from "../utils/locale";
 import { config } from "../../package.json";
+import { getPref } from "../utils/prefs";
+
+export function isSupportedMetadataURL(url: unknown): url is string {
+  return (
+    typeof url === "string"
+    && /^https?:\/\/([^/]+\.)?douban\.com(?:[/:?#]|$)/i.test(url)
+  );
+}
 
 export async function getMeta() {
-  const items = ZoteroPane.getSelectedItems();
+  const items = ZoteroPane.getSelectedItems().filter((item) => {
+    return item.isRegularItem();
+  });
   const popWin = new ztoolkit.ProgressWindow(config.addonName, {
     closeOnClick: true,
     closeTime: -1,
@@ -17,41 +26,65 @@ export async function getMeta() {
       idx: 0,
     })
     .show();
-  items.forEach((item, inedx) => {
-    if (!item.isNote() && !item.isAttachment()) {
-      translateURL(item.getField("url"))
-        .then((newItem) => {
-          if (getPref("schema") === "save") {
-            popWin.changeLine({
-              type: "success",
-              progress: 0,
-              text: `${inedx + 1}/${items.length}${getString("message-saveItem-success")}`,
-              idx: 1,
-            });
-            return newItem;
-          } else {
-            updateItem(newItem, item);
-            popWin.changeLine({
-              type: "success",
-              progress: 0,
-              text: `${inedx + 1}/${items.length}${getString("message-updateItem-success")}`,
-              idx: 1,
-            });
-          }
-        })
-        .catch((err) => {
-          ztoolkit.log(err);
-          popWin
-            .changeLine({
-              type: "error",
-              progress: 0,
-              text: `${inedx + 1}/${items.length}${getString("message-getMeta-error")}, ${err}`,
-              idx: 1,
-            })
-            .startCloseTimer(3000);
+
+  if (!items.length) {
+    popWin
+      .changeLine({
+        type: "error",
+        progress: 0,
+        text: getString("message-getMeta-error"),
+        idx: 1,
+      })
+      .startCloseTimer(3000);
+    return;
+  }
+
+  for (const [index, item] of items.entries()) {
+    const current = `${index + 1}/${items.length}`;
+
+    try {
+      const url = item.getField("url");
+      if (!isSupportedMetadataURL(url)) {
+        throw new Error("Unsupported or missing Douban URL");
+      }
+
+      const newItem = await translateURL(url);
+      if (!newItem) {
+        throw new Error("No translated metadata found");
+      }
+
+      if (getPref("schema") === "save") {
+        popWin.changeLine({
+          type: "success",
+          progress: 0,
+          text: `${current}${getString("message-saveItem-success")}`,
+          idx: 1,
         });
+        continue;
+      }
+
+      const startTime = Date.now();
+      await updateItem(newItem, item);
+      const endTime = Date.now();
+      ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
+      popWin.changeLine({
+        type: "success",
+        progress: 0,
+        text: `${current}${getString("message-updateItem-success")}`,
+        idx: 1,
+      });
+    } catch (err) {
+      ztoolkit.log(err);
+      popWin
+        .changeLine({
+          type: "error",
+          progress: 0,
+          text: `${current}${getString("message-getMeta-error")}, ${err}`,
+          idx: 1,
+        })
+        .startCloseTimer(3000);
     }
-  });
+  }
 }
 
 function getSettings(): {
@@ -132,7 +165,7 @@ function _getConcurrentCaller(key: string, interval: number) {
   return caller;
 }
 
-async function _translateURLNow(url: string | string[]) {
+async function _translateURLNow(url: string) {
   const doc = (await Zotero.HTTP.processDocuments(url, (doc) => doc))[0];
   const newItems = await translateDocument(doc);
   if (!newItems.length) {
@@ -163,74 +196,83 @@ async function saveAttachments(newItem: any, oldItem: Zotero.Item) {
 }
 
 async function updateItem(newItem: any, oldItem: Zotero.Item) {
-  for (const field of Object.keys(newItem)) {
-    switch (field) {
-      case "notes":
-        {
-          if (newItem["notes"].length === 0) break;
-          if (getPref("saveAttachments") === true) {
-            const noteIDs = oldItem.getNotes();
-            if (noteIDs.length === 0) {
-              saveNote(newItem, oldItem);
-            } else {
-              const results = [];
-              for (const noteID of noteIDs) {
-                const noteItem = Zotero.Items.get(noteID);
-                const noteTitle = noteItem.getNoteTitle();
-                const regex = /目录/;
-                const result = regex.test(noteTitle);
-                results.push(result);
-              }
-              if (!results.some((result) => result === true)) {
-                saveNote(newItem, oldItem);
-              }
-            }
-          }
-        }
-        break;
-      case "attachments":
-        {
-          if (newItem["attachments"].length === 0) break;
-          if (getPref("saveAttachments") === true) {
-            const attachmentIDs = oldItem.getAttachments();
-            if (attachmentIDs.length === 0) {
-              saveAttachments(newItem, oldItem);
-            } else {
-              const results = [];
-              for (const attachmentID of attachmentIDs) {
-                const attachmentItem = Zotero.Items.get(attachmentID);
-                if (attachmentItem.getField("title") === newItem["title"]) {
-                  results.push(true);
-                }
-              }
-              if (!results.some((result) => result === true)) {
-                saveAttachments(newItem, oldItem);
-              }
-            }
-          }
-        }
-        break;
-      case "tags":
-      case "seeAlso":
-      case "itemType":
-        break;
-      case "creators":
-        oldItem.setCreators(newItem["creators"]);
-        ztoolkit.log("Update creators");
-        break;
-      default: {
-        const newFieldValue = newItem[field] ?? "",
-          // @ts-ignore field 已为 Zotero.Item.ItemField
-          oldFieldValue = oldItem.getField(field);
-        ztoolkit.log(
-          `Update ${field} from ${oldFieldValue} to ${newFieldValue}`,
-        );
-        // @ts-ignore field 已为 Zotero.Item.ItemField
-        oldItem.setField(field, newFieldValue);
-        break;
-      }
-    }
+  if (!newItem) {
+    throw new Error("No translated metadata found");
   }
-  await oldItem.saveTx();
+
+  // for (const field of Object.keys(newItem)) {
+  //   switch (field) {
+  //     case "notes":
+  //       {
+  //         if (newItem["notes"].length === 0) break;
+  //         if (getPref("saveAttachments") === true) {
+  //           const noteIDs = oldItem.getNotes();
+  //           if (noteIDs.length === 0) {
+  //             saveNote(newItem, oldItem);
+  //           } else {
+  //             const results = [];
+  //             for (const noteID of noteIDs) {
+  //               const noteItem = Zotero.Items.get(noteID);
+  //               const noteTitle = noteItem.getNoteTitle();
+  //               const regex = /目录/;
+  //               const result = regex.test(noteTitle);
+  //               results.push(result);
+  //             }
+  //             if (!results.some((result) => result === true)) {
+  //               saveNote(newItem, oldItem);
+  //             }
+  //           }
+  //         }
+  //       }
+  //       break;
+  //     case "attachments":
+  //       {
+  //         if (newItem["attachments"].length === 0) break;
+  //         if (getPref("saveAttachments") === true) {
+  //           const attachmentIDs = oldItem.getAttachments();
+  //           if (attachmentIDs.length === 0) {
+  //             saveAttachments(newItem, oldItem);
+  //           } else {
+  //             const results = [];
+  //             for (const attachmentID of attachmentIDs) {
+  //               const attachmentItem = Zotero.Items.get(attachmentID);
+  //               if (attachmentItem.getField("title") === newItem["title"]) {
+  //                 results.push(true);
+  //               }
+  //             }
+  //             if (!results.some((result) => result === true)) {
+  //               saveAttachments(newItem, oldItem);
+  //             }
+  //           }
+  //         }
+  //       }
+  //       break;
+  //     case "tags":
+  //     case "seeAlso":
+  //     case "itemType":
+  //       break;
+  //     case "creators":
+  //       oldItem.setCreators(newItem["creators"]);
+  //       ztoolkit.log("Update creators");
+  //       break;
+  //     default: {
+  //       const newFieldValue = newItem[field] ?? "",
+  //         // @ts-ignore field 已为 Zotero.Item.ItemField
+  //         oldFieldValue = oldItem.getField(field);
+  //       ztoolkit.log(
+  //         `Update ${field} from ${oldFieldValue} to ${newFieldValue}`,
+  //       );
+  //       // @ts-ignore field 已为 Zotero.Item.ItemField
+  //       oldItem.setField(field, newFieldValue);
+  //       break;
+  //     }
+  //   }
+  // }
+  // await oldItem.saveTx();
   // return oldItem;
+  ztoolkit.log(typeof newItem);
+  // const json = newItem.toJSON();
+  oldItem.fromJSON(newItem);
+  await oldItem.saveTx();
+  return oldItem;
 }
