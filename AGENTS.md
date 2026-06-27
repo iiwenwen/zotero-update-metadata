@@ -184,7 +184,53 @@ HEARTBEAT_OK
 
 ---
 
-## 8. Defense & Integrity Gate
+## 8. Execution Gates
+
+每个任务进入 EXECUTE 前，必须先判断任务复杂度：
+
+```text
+complexity: SIMPLE / COMPLEX
+```
+
+`SIMPLE` 必须同时满足：
+
+- certainty 为 HIGH，risk 为 LOW
+- 核心实体不超过 2 个
+- 目标和 Acceptance Criteria 明确
+- 不涉及用户数据、安全边界、权限、发布、外部同步或真实 Zotero 库写入
+- 可以用直接命令、静态检查或等价端到端验证确认完成
+
+`SIMPLE` 任务可以在完成 BOOT、ROUTE 和 META_REFLECT 后直接执行，但仍必须记录最小意图、验证方式、Files In Scope 和 Commit Scope。
+
+任何不满足 `SIMPLE` 条件的任务都是 `COMPLEX`。`COMPLEX` 任务必须先写 PLAN，且 PLAN 必须包含元反思结论：
+
+- problem_exists
+- narrowed_scope
+- redefined_as
+- entity_count
+- old_behavior_risk
+- validation_first
+
+任务完成前必须跑 E2E 或等价端到端验证：
+
+- 插件功能、用户可见行为、外部同步、发布或运行时变更必须执行自动化 E2E / smoke test，不能只靠人工手动验证。
+- Zotero 插件 E2E 必须使用隔离 profile、临时测试库、fixture 或等价 harness，不得触碰真实用户资料库。
+- 如果任务仅修改文档、流程规则或本机 AI 工作态，且不存在产品功能路径，必须明确记录 `E2E: not applicable` 的原因，并执行等价验证，例如结构化文本检查、规则检索、diff check、staged scope 检查和自审。
+
+创建 PR 或准备 PR handoff 前，必须先自审。自审至少覆盖：
+
+- Goal / Acceptance Criteria 是否全部满足
+- 是否破坏旧功能、旧流程或旧数据
+- 边界、失败路径和兜底是否清楚
+- E2E 或等价验证证据是否充分
+- staged files 是否只包含 Commit Scope
+- 是否包含密钥、隐私数据、cache、日志或本机绝对路径
+
+如果自审存在 P0/P1/P2 必修问题，不得创建 PR，不得输出 `PASS`。
+
+---
+
+## 9. Defense & Integrity Gate
 
 每个任务进入 EXECUTE 前，必须同时设计成功路径和失败路径。
 
@@ -207,9 +253,9 @@ PLAN 必须记录：
 
 ---
 
-## 9. 42COG Project Entry
+## 10. 42COG Project Entry
 
-## 10. Git Checkpoint Rule
+## 11. Git Checkpoint Rule
 
 每完成一个任务，必须创建一次 git checkpoint commit。
 
@@ -262,7 +308,7 @@ feat / fix / docs / chore / refactor / test / build / ci
 
 ---
 
-## 11. 42COG Project Entry
+## 12. 42COG Project Entry
 
 本项目已接入 42COG / RCSW 工作流：
 
