@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -431,9 +431,76 @@ try {
     },
   );
 
+  assertPreferenceWindowLocalization();
+
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+function assertPreferenceWindowLocalization() {
+  const preferencesXhtml = readFileSync(
+    "addon/chrome/content/preferences.xhtml",
+    "utf8",
+  );
+  const preferenceMessages = [
+    "pref-select",
+    "pref-saveAttachments",
+    "pref-confirmBeforeUpdate",
+    "pref-attachmentStrategy",
+    "pref-saveNotes",
+    "pref-about",
+    "pref-help",
+  ];
+
+  for (const message of preferenceMessages) {
+    assert.match(
+      preferencesXhtml,
+      new RegExp(`data-l10n-id="${message}"`),
+      `${message} should be used by the preference window`,
+    );
+  }
+
+  for (const message of [
+    "pref-saveAttachments",
+    "pref-confirmBeforeUpdate",
+    "pref-saveNotes",
+  ]) {
+    assert.match(
+      preferencesXhtml,
+      new RegExp(
+        `<checkbox[\\s\\S]*data-l10n-id="${message}"[\\s\\S]*data-l10n-attrs="label"[\\s\\S]*native="true"`,
+      ),
+      `${message} checkbox should localize its visible label`,
+    );
+  }
+
+  for (const message of ["pref-select", "pref-attachmentStrategy"]) {
+    assert.match(
+      preferencesXhtml,
+      new RegExp(
+        `<label[\\s\\S]*data-l10n-id="${message}"[\\s\\S]*data-l10n-attrs="value"`,
+      ),
+      `${message} label should localize its visible value`,
+    );
+  }
+
+  assert.match(
+    preferencesXhtml.trim(),
+    /<\/groupbox>\s*<\/vbox>$/,
+    "the About group should stay inside the preference pane root",
+  );
+
+  for (const locale of ["en-US", "zh-CN"]) {
+    const ftl = readFileSync(`addon/locale/${locale}/preferences.ftl`, "utf8");
+    for (const message of preferenceMessages) {
+      assert.match(
+        ftl,
+        new RegExp(`^${message}\\s*=`, "m"),
+        `${message} should exist in ${locale} preferences.ftl`,
+      );
+    }
+  }
 }
 
 function createMockDocument({ title, selectors }) {

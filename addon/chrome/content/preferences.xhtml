@@ -10,7 +10,7 @@
       <html:h2 data-l10n-id="pref-general"></html:h2>
     </label>
     <hbox align="center">
-      <label data-l10n-id="pref-select"></label>
+      <label data-l10n-id="pref-select" data-l10n-attrs="value"></label>
 
       <box id="__addonRef__-select-schema"></box>
     </hbox>
@@ -20,32 +20,38 @@
       id="__addonRef__-saveAttachments"
       preference="__prefsPrefix__.saveAttachments"
       data-l10n-id="pref-saveAttachments"
+      data-l10n-attrs="label"
       native="true"
     />
     <checkbox
       id="__addonRef__-confirmBeforeUpdate"
       preference="__prefsPrefix__.confirmBeforeUpdate"
       data-l10n-id="pref-confirmBeforeUpdate"
+      data-l10n-attrs="label"
       native="true"
     />
     <hbox align="center">
-      <label data-l10n-id="pref-attachmentStrategy"></label>
+      <label
+        data-l10n-id="pref-attachmentStrategy"
+        data-l10n-attrs="value"
+      ></label>
       <box id="__addonRef__-attachment-strategy"></box>
     </hbox>
     <checkbox
       id="__addonRef__-saveNotes"
       preference="__prefsPrefix__.saveNotes"
       data-l10n-id="pref-saveNotes"
+      data-l10n-attrs="label"
       native="true"
     />
   </groupbox>
+  <groupbox>
+    <label>
+      <html:h2 data-l10n-id="pref-about"></html:h2>
+    </label>
+    <label
+      data-l10n-id="pref-help"
+      data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
+    ></label>
+  </groupbox>
 </vbox>
-<groupbox>
-  <label>
-    <html:h2 data-l10n-id="pref-about"></html:h2>
-  </label>
-  <label
-    data-l10n-id="pref-help"
-    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
-  ></label>
-</groupbox>
