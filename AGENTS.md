@@ -19,9 +19,11 @@
 `repo-change task` 包括任何会修改仓库或产生可提交产物的任务，常见子类：
 
 - code task：代码 bug、需求、新功能、测试
-- docs/workflow/prompt-file task：仓库内文档、流程文件、提示词文件修改
+- project docs/workflow task：面向产品、用户、协作者、发布或项目交付的仓库文档/流程修改
 - config/build/release task：CI、build、release、配置
 - 其他任何会产生 staged diff 或需要 git checkpoint 的任务
+
+`agent-process-maintenance task` 包括只调整 AI agent 自身行为的 `AGENTS.md`、`.ai/WORKFLOW.md`、`.ai/prompts/`、`.codex/skills/` 或提示词治理规则。它可以修改仓库并创建 git checkpoint，但默认不创建 CNB Issue；除非用户明确要求把该流程治理事项纳入远端项目任务。
 
 `no-change review/advice task` 包括：
 
@@ -30,7 +32,7 @@
 - 外部资料或模型意见汇总
 - 不修改仓库、不产生可提交产物的任务
 
-只有 `repo-change task` 和 watchdog/queue mode 必须按顺序读取：
+只有 `repo-change task`、`agent-process-maintenance task` 和 watchdog/queue mode 必须按顺序读取：
 
 1. `AGENTS.md`
 2. `.ai/WORKFLOW.md`
@@ -52,7 +54,8 @@
 
 你必须遵守：
 
-- `repo-change task` 必须先创建或绑定 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
+- 面向产品、代码、用户价值、发布、配置或协作者交付的 `repo-change task` 必须先创建或绑定 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
+- `agent-process-maintenance task` 默认不创建 CNB Issue；如需修改版本化流程文件，使用本地 task/run 记录和受控 git checkpoint
 - `no-change review/advice task` 禁止为了形式完整而创建 CNB Issue、更新队列或制造 git commit
 - 一次只处理一个任务
 - 一次只处理不超过 4 个核心实体
@@ -68,7 +71,7 @@
 
 ## 3. Reality Sync Rule
 
-`repo-change task` 动手前必须确认真实状态。`no-change review/advice task` 可声明 `Repository state not modified; git gates not applicable`，不因 dirty workspace 阻塞。
+`repo-change task` 和 `agent-process-maintenance task` 动手前必须确认真实状态。`no-change review/advice task` 可声明 `Repository state not modified; git gates not applicable`，不因 dirty workspace 阻塞。
 
 至少检查：
 
@@ -145,6 +148,8 @@ NEED_HUMAN_DECISION: <reason>
 9. 本任务范围内的修改已完成一次受控 git commit，并在提交说明中写明任务、具体变更和验证结果
 10. CNB Issue 只有在 1-9 全部满足后才能关闭；功能测试不完整时不得关闭任务
 
+`agent-process-maintenance task` 不要求 CNB Issue 或 Issue closure，但如果修改版本化文件，仍必须完成等价验证、受控 git checkpoint，并在本地 `.ai/STATE.md` / `.ai/runs/` 记录。
+
 `no-change review/advice task` 不要求 CNB Issue、`.ai/STATE.md`、`.ai/runs/` 或 git commit。最终回复必须明确未修改仓库：
 
 ```text
@@ -211,7 +216,7 @@ HEARTBEAT_OK
 
 ## 8. Execution Gates
 
-`repo-change task` 进入 EXECUTE 前，必须先判断任务复杂度：
+`repo-change task` 和 `agent-process-maintenance task` 进入 EXECUTE 前，必须先判断任务复杂度：
 
 ```text
 complexity: SIMPLE / COMPLEX
@@ -299,7 +304,7 @@ PLAN 必须记录：
 
 ## 11. Git Checkpoint Rule
 
-每完成一个 `repo-change task`，必须创建一次 git checkpoint commit。
+每完成一个 `repo-change task`，必须创建一次 git checkpoint commit。每完成一个修改版本化文件的 `agent-process-maintenance task`，也必须创建一次受控 git checkpoint commit，但不得为了该类本机流程治理自动创建 CNB Issue。
 
 `no-change review/advice task` 禁止 fake commit；最终输出使用：
 
