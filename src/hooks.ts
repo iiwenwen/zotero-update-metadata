@@ -1,4 +1,3 @@
-import { config } from "../package.json";
 import { getString, initLocale } from "./utils/locale";
 import { createZToolkit } from "./utils/ztoolkit";
 import { registerMenu, selectoritem, unregisterMenu } from "./modules/menu";
@@ -17,7 +16,7 @@ async function onStartup() {
   // TODO: Remove this after zotero#3387 is merged
   if (__env__ === "development") {
     // Keep in sync with the scripts/startup.mjs
-    const loadDevToolWhen = `Plugin ${config.addonID} startup`;
+    const loadDevToolWhen = `Plugin ${addon.data.config.addonID} startup`;
     ztoolkit.log(loadDevToolWhen);
   }
 
@@ -25,14 +24,17 @@ async function onStartup() {
 
   registerPrefsWindow();
 
-  await onMainWindowLoad(window);
+  await Promise.all(
+    Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
+  );
+  addon.data.initialized = true;
 }
 
-async function onMainWindowLoad(win: Window): Promise<void> {
+async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   // Create ztoolkit for every window
   addon.data.ztoolkit = createZToolkit();
 
-  const popupWin = new ztoolkit.ProgressWindow(config.addonName, {
+  const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
     closeOnClick: true,
     closeTime: -1,
   })
@@ -74,7 +76,8 @@ function onShutdown(): void {
   addon.data.dialog?.window?.close();
   // Remove addon object
   addon.data.alive = false;
-  delete (Zotero as any)[config.addonInstance];
+  // @ts-expect-error - Plugin instance is not typed
+  delete Zotero[addon.data.config.addonInstance];
 }
 
 /**

@@ -547,7 +547,7 @@ try {
 
 function assertPreferenceWindowLocalization() {
   const preferencesXhtml = readFileSync(
-    "addon/chrome/content/preferences.xhtml",
+    "addon/content/preferences.xhtml",
     "utf8",
   );
   const preferenceMessages = [

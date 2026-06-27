@@ -303,7 +303,9 @@ async function translateDoubanDocument(doc: Document, url: string) {
     if (isNoTitleSpecifiedError(err)) {
       return [buildFallbackDoubanItem(doc, url)];
     }
-    throw new Error(`Zotero translator failed: ${getErrorMessage(err)}`);
+    throw new Error(`Zotero translator failed: ${getErrorMessage(err)}`, {
+      cause: err,
+    });
   }
 }
 

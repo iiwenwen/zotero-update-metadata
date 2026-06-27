@@ -42,7 +42,7 @@ export default defineConfig({
         },
         bundle: true,
         target: "firefox115",
-        outfile: `addon/chrome/content/scripts/${pkg.config.addonRef}.js`,
+        outfile: `addon/content/scripts/${pkg.config.addonRef}.js`,
         minify: process.env.NODE_ENV === "production",
       },
     ],
@@ -54,6 +54,6 @@ export default defineConfig({
   },
 
   test: {
-    waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.alive`,
+    waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.initialized`,
   },
 });
