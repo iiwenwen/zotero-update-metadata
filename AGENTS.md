@@ -311,7 +311,12 @@ Zotero 插件测试分为三档，必须先声明采用哪一档：
 2. `isolated Zotero integration`：允许自主启动 Zotero，不需要逐次请求用户确认，并且涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录将运行的命令、profile 路径、测试库数据目录、fixture 条目和预期写入 diff；如果需要向 Zotero 发送调试命令，必须证明该命令绑定到测试实例。
 3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
 
-允许使用 `/Applications/Zotero.app` 启动隔离测试，只要启动命令明确包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止使用裸 `zotero -url zotero://ztoolkit-debug/...` 触发自动测试，因为该 URL 可能投递到已运行的正式 Zotero 实例；如果无法证明 debug URL 绑定到测试实例，必须停止并标记 `BLOCKED: isolated debug channel unavailable`。
+执行 Zotero 集成测试前，必须先判定当前 Zotero 进程属于哪一类：
+
+- `isolated test instance`：进程启动参数包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。
+- `real user instance`：正式 profile、正式 dataDir，或无法证明隔离。
+
+如果已存在 `isolated test instance`，优先使用该实例的热重载或已绑定调试通道继续测试，不要手动启动新的 Zotero。允许使用 `/Applications/Zotero.app` 启动隔离测试，只在没有可用测试实例时使用，且启动命令必须明确包含测试 profile，并确认该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止向 `real user instance` 发送插件测试命令。禁止使用裸 `zotero -url zotero://ztoolkit-debug/...` 触发自动测试，因为该 URL 可能投递到已运行的正式 Zotero 实例；只有能证明 debug URL 绑定到测试实例时才允许使用，否则必须停止并标记 `BLOCKED: isolated debug channel unavailable`。
 
 在执行任何可能启动 Zotero 的命令前，必须先检查并记录：
 
@@ -436,7 +441,45 @@ PLAN 必须记录：
 
 ## 10. 42COG Project Entry
 
-## 11. Git Checkpoint Rule
+## 11. Sub-Agent Review Separation
+
+代码执行和 review 检查必须尽量分离。
+
+适用范围：
+
+- 所有 `COMPLEX` 或 `HIGH risk` 的 code task
+- 插件功能、用户可见行为、数据安全、备份/恢复、发布、权限、外部同步、真实 Zotero 数据边界相关任务
+- watchdog、queue、lock、NEXT、PERSIST、Git checkpoint、Issue closure 等自主流程任务
+- 修改 `AGENTS.md`、`.ai/WORKFLOW.md`、`.ai/prompts/` 中执行门禁、安全边界、review、状态持久化或提交规则的 `agent-process-maintenance task`
+- 创建 PR、准备 handoff 或关闭远端 Issue 前仍有行为风险的任务
+- focused self-review 发现 P0/P1/P2 后，修复完成必须再交给 reviewer 复审
+
+执行规则：
+
+- executor agent 负责实现或修复；reviewer sub-agent 负责找问题，不直接修改同一批文件
+- reviewer 必须使用不同指令，以 P0/P1/P2/P3 findings 为主，优先找回归、数据风险、验证缺口、git scope 问题
+- reviewer 可以使用更强模型或更高 reasoning；不可用时记录原因和 fallback
+- reviewer 的任务必须是只读审查，除非主 agent 明确把一个独立修复子任务交给另一个 worker
+- executor 不得把自己的自评替代 reviewer 结论
+- reviewer 必须读取任务目标、diff、验证证据和 scope 说明，但不继承 executor 的“已经完成”假设
+
+分级要求：
+
+- `SIMPLE` 且低风险的非代码或文档任务：允许 focused self-review
+- `SIMPLE` 代码任务：至少做 focused self-review；如果涉及用户可见行为、插件运行路径或回归风险，必须请求 reviewer sub-agent
+- 纯格式、拼写、注释、低风险说明文案：允许 focused self-review，但必须记录 review 类型
+- `COMPLEX` 或 `HIGH risk` 任务：必须请求 reviewer sub-agent；如果 sub-agent 不可用，记录 `reviewer_unavailable`，并按风险输出 `NEED_HUMAN_DECISION` 或 `BLOCKED`
+
+完成门禁：
+
+- reviewer 的 P0/P1/P2 必修问题未清零，不得输出 `PASS`、不得关闭 Issue、不得创建 PR
+- 如果 reviewer 只提出 P3，可记录为剩余建议，不阻塞完成
+- sub-agent 不可用时必须记录 `reviewer_unavailable` 的原因、尝试方式、影响范围和替代 review 类型
+- final / run 记录必须说明 review 是 `sub-agent review`、`focused self-review`，或 `reviewer_unavailable fallback`
+
+---
+
+## 12. Git Checkpoint Rule
 
 每完成一个 `repo-change task`，必须创建一次 git checkpoint commit。每完成一个修改版本化文件的 `agent-process-maintenance task`，也必须创建一次受控 git checkpoint commit，但不得为了该类本机流程治理自动创建 CNB Issue。
 
@@ -495,7 +538,7 @@ feat / fix / docs / chore / refactor / test / build / ci
 
 ---
 
-## 12. 42COG Project Entry
+## 13. 42COG Project Entry
 
 本项目已接入 42COG / RCSW 工作流：
 
