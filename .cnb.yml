@@ -1,0 +1,21 @@
+# Sync CNB main to GitHub main after every CNB push.
+#
+# Required secret variables in CNB:
+# - GIT_USERNAME: GitHub username, or x-access-token for token auth
+# - GIT_ACCESS_TOKEN: GitHub fine-grained token with repository Contents read/write
+main:
+  push:
+    - name: sync-to-github
+      stages:
+        - name: check-github-credentials
+          script:
+            - test -n "$GIT_USERNAME"
+            - test -n "$GIT_ACCESS_TOKEN"
+        - name: push-to-github
+          image: tencentcom/git-sync
+          settings:
+            target_url: https://github.com/iiwenwen/zotero-update-metadata.git
+            auth_type: https
+            username: ${GIT_USERNAME}
+            password: ${GIT_ACCESS_TOKEN}
+            branch: main
