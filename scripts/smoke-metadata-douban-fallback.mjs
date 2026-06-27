@@ -360,6 +360,17 @@ try {
     }),
     "Summary: success 2, failed 1, skipped 1, canceled 1, fallback 1, reasons: missing URL x1; translator failed x1",
   );
+  assert.equal(
+    formatBatchUpdateSummary({
+      success: 1,
+      failed: 0,
+      skipped: 0,
+      canceled: 0,
+      fallback: 0,
+      reasons: {},
+    }),
+    "Summary: success 1",
+  );
   assert.deepEqual(
     formatBatchUpdateSummaryLines({
       success: 2,
@@ -381,6 +392,17 @@ try {
       "fallback 1",
       "reasons: missing URL x1; translator failed x1",
     ],
+  );
+  assert.deepEqual(
+    formatBatchUpdateSummaryLines({
+      success: 1,
+      failed: 0,
+      skipped: 0,
+      canceled: 0,
+      fallback: 0,
+      reasons: {},
+    }),
+    ["Summary:", "success 1"],
   );
   assert.equal(
     formatBatchUpdateSummary(
@@ -516,6 +538,7 @@ try {
   );
 
   assertPreferenceWindowLocalization();
+  assertPreferenceCheckboxBindings();
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
@@ -585,6 +608,31 @@ function assertPreferenceWindowLocalization() {
       );
     }
   }
+}
+
+function assertPreferenceCheckboxBindings() {
+  const preferenceWindowSource = readFileSync(
+    "src/modules/preferenceWindow.ts",
+    "utf8",
+  );
+
+  for (const prefKey of [
+    "saveAttachments",
+    "confirmBeforeUpdate",
+    "saveNotes",
+  ]) {
+    assert.match(
+      preferenceWindowSource,
+      new RegExp(`bindPrefCheckbox\\(doc, "${prefKey}"\\)`),
+      `${prefKey} should explicitly bind its checkbox to Zotero prefs`,
+    );
+  }
+
+  assert.match(
+    preferenceWindowSource,
+    /setPref\(prefKey, checkbox\.checked === true\)/,
+    "checkbox changes should be persisted to Zotero prefs",
+  );
 }
 
 function createMockDocument({ title, selectors }) {

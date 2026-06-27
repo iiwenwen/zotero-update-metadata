@@ -36,6 +36,11 @@ function bindPrefEvents() {
   if (!doc) {
     return;
   }
+
+  bindPrefCheckbox(doc, "saveAttachments");
+  bindPrefCheckbox(doc, "confirmBeforeUpdate");
+  bindPrefCheckbox(doc, "saveNotes");
+
   ztoolkit.UI.replaceElement(
     {
       tag: "menulist",
@@ -130,6 +135,26 @@ function bindPrefEvents() {
     },
     doc.querySelector(`#${makeId("attachment-strategy")}`) as HTMLElement,
   );
+}
+
+function bindPrefCheckbox(doc: Document, prefKey: string) {
+  const checkbox = doc.querySelector(`#${makeId(prefKey)}`) as
+    | (HTMLInputElement & { checked?: boolean })
+    | null;
+
+  if (!checkbox) {
+    return;
+  }
+
+  checkbox.checked = getPref(prefKey) === true || getPref(prefKey) === "true";
+
+  const saveCheckedState = () => {
+    setPref(prefKey, checkbox.checked === true);
+    ztoolkit.log(prefKey, checkbox.checked);
+  };
+
+  checkbox.addEventListener("command", saveCheckedState);
+  checkbox.addEventListener("change", saveCheckedState);
 }
 // function disablePrefs() {
 //   const state = getPref("saveAttachments");

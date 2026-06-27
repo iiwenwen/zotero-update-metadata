@@ -522,10 +522,10 @@ export function formatBatchUpdateSummary(
 
   return [
     `${labels.title}: ${labels.success} ${summary.success}`,
-    `${labels.failed} ${summary.failed}`,
-    `${labels.skipped} ${summary.skipped}`,
-    `${labels.canceled} ${summary.canceled}`,
-    `${labels.fallback} ${summary.fallback}`,
+    summary.failed ? `${labels.failed} ${summary.failed}` : "",
+    summary.skipped ? `${labels.skipped} ${summary.skipped}` : "",
+    summary.canceled ? `${labels.canceled} ${summary.canceled}` : "",
+    summary.fallback ? `${labels.fallback} ${summary.fallback}` : "",
     reasonText ? `${labels.reasons}: ${reasonText}` : "",
   ]
     .filter(Boolean)
@@ -541,10 +541,10 @@ export function formatBatchUpdateSummaryLines(
   return [
     `${labels.title}:`,
     `${labels.success} ${summary.success}`,
-    `${labels.failed} ${summary.failed}`,
-    `${labels.skipped} ${summary.skipped}`,
-    `${labels.canceled} ${summary.canceled}`,
-    `${labels.fallback} ${summary.fallback}`,
+    summary.failed ? `${labels.failed} ${summary.failed}` : "",
+    summary.skipped ? `${labels.skipped} ${summary.skipped}` : "",
+    summary.canceled ? `${labels.canceled} ${summary.canceled}` : "",
+    summary.fallback ? `${labels.fallback} ${summary.fallback}` : "",
     reasonText ? `${labels.reasons}: ${reasonText}` : "",
   ]
     .filter(Boolean);
