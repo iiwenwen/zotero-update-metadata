@@ -32,13 +32,31 @@
 - 外部资料或模型意见汇总
 - 不修改仓库、不产生可提交产物的任务
 
-只有 `repo-change task`、`agent-process-maintenance task` 和 watchdog/queue mode 必须按顺序读取：
+只有 `repo-change task`、`agent-process-maintenance task` 和 watchdog/queue mode 必须按阶段读取。
+
+阶段 A：编排前读取，适用于所有 repo-change、agent-process-maintenance 和
+watchdog/queue mode：
 
 1. `AGENTS.md`
 2. `.ai/WORKFLOW.md`
 3. `.ai/STATE.md`
 4. `.ai/QUEUE.md`
+
+阶段 B：选中后读取，只适用于已经明确选中的单个任务：
+
 5. 当前任务 Issue 或 `.ai/tasks/<task-id>.md`
+
+如果用户要求“检查待执行任务”、watchdog 心跳、queue mode 或任何未指定单个 Issue
+的请求，必须先完成任务编排边界，且只能停留在阶段 A：
+
+1. 只读取远端 Issue 列表摘要、本地队列索引和状态摘要
+2. 按 GROUP 规则输出 `current_batch`
+3. 按 SELECT 规则输出唯一候选任务，或输出 `HEARTBEAT_OK`
+4. 输出该候选任务的 selection reason、certainty、risk、complexity、next gate
+
+在以上 4 项完成前，禁止进入阶段 B，禁止读取候选 Issue 正文，禁止进入 BOOT/ROUTE/META_REFLECT，
+禁止打开相关源码，禁止开始实现、测试、stage、commit 或关闭 Issue。`.ai/STATE.md`
+里的 `next_action` 只能作为编排输入，不能跳过 GROUP / SELECT。
 
 `no-change review/advice task` 只读取用户提供或明确要求的上下文；除非用户要求基于仓库真实状态判断，否则不读取 `.ai/STATE.md`、`.ai/QUEUE.md`，不进入 BOOT、QUEUE 或 commit gate。
 
@@ -59,6 +77,7 @@
 - `no-change review/advice task` 禁止为了形式完整而创建 CNB Issue、更新队列或制造 git commit
 - 一次只处理一个任务
 - 一次只处理不超过 4 个核心实体
+- queue/watchdog mode 必须先完成任务编排边界；选定任务前不得读取候选 Issue 正文或开始工作
 - 不要顺手修无关问题
 - 不要扩大需求边界
 - 不要重写用户目标
