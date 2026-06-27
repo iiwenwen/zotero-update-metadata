@@ -56,6 +56,7 @@ export type BatchUpdateSummaryLabels = {
 };
 
 export type AttachmentSaveStrategy = "none" | "missing" | "always";
+export const METADATA_RESULT_CLOSE_TIME_MS = 8000;
 
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
   const value = item?.getField("ISBN");
@@ -120,7 +121,7 @@ export async function getMeta() {
     getString("itemmenu-updateMetadata-label"),
     {
       closeOnClick: true,
-      closeTime: -1,
+      closeTime: METADATA_RESULT_CLOSE_TIME_MS,
     },
   );
 
@@ -243,6 +244,7 @@ export async function getMeta() {
       idx: 2 + offset,
     });
   });
+  popWin.startCloseTimer(METADATA_RESULT_CLOSE_TIME_MS);
 }
 
 function getSettings(): {

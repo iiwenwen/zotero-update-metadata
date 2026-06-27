@@ -32,6 +32,7 @@ try {
     getItemISBN,
     isNoTitleSpecifiedError,
     lowersDatePrecision,
+    METADATA_RESULT_CLOSE_TIME_MS,
     mergeExtra,
     normalizeAttachmentSaveStrategy,
     shouldConfirmBeforeMetadataUpdate,
@@ -86,6 +87,7 @@ try {
   assert.equal(extractDoubanTitle(documentWithJSONLD), "JSON-LD Title");
   assert.equal(isNoTitleSpecifiedError(new Error("No title specified")), true);
   assert.equal(isNoTitleSpecifiedError(new Error("Network failed")), false);
+  assert.equal(METADATA_RESULT_CLOSE_TIME_MS, 8000);
   assert.equal(lowersDatePrecision("2020-05-06", "2020"), true);
   assert.equal(lowersDatePrecision("2020", "2020-05-06"), false);
   assert.equal(
