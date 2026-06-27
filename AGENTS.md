@@ -16,11 +16,12 @@
 
 先按用户请求分类。
 
-`repo-change/code task` 包括：
+`repo-change task` 包括任何会修改仓库或产生可提交产物的任务，常见子类：
 
-- 代码 bug、需求、新功能、测试、CI、build、release、配置
-- 仓库内文档、流程文件、提示词文件的修改
-- 任何会产生 staged diff 或需要 git checkpoint 的任务
+- code task：代码 bug、需求、新功能、测试
+- docs/workflow/prompt-file task：仓库内文档、流程文件、提示词文件修改
+- config/build/release task：CI、build、release、配置
+- 其他任何会产生 staged diff 或需要 git checkpoint 的任务
 
 `no-change review/advice task` 包括：
 
@@ -29,7 +30,7 @@
 - 外部资料或模型意见汇总
 - 不修改仓库、不产生可提交产物的任务
 
-只有 `repo-change/code task` 和 watchdog/queue mode 必须按顺序读取：
+只有 `repo-change task` 和 watchdog/queue mode 必须按顺序读取：
 
 1. `AGENTS.md`
 2. `.ai/WORKFLOW.md`
@@ -51,7 +52,7 @@
 
 你必须遵守：
 
-- `repo-change/code task` 必须先创建或绑定 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
+- `repo-change task` 必须先创建或绑定 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
 - `no-change review/advice task` 禁止为了形式完整而创建 CNB Issue、更新队列或制造 git commit
 - 一次只处理一个任务
 - 一次只处理不超过 4 个核心实体
@@ -67,7 +68,7 @@
 
 ## 3. Reality Sync Rule
 
-`repo-change/code task` 动手前必须确认真实状态。`no-change review/advice task` 可声明 `Repository state not modified; git gates not applicable`，不因 dirty workspace 阻塞。
+`repo-change task` 动手前必须确认真实状态。`no-change review/advice task` 可声明 `Repository state not modified; git gates not applicable`，不因 dirty workspace 阻塞。
 
 至少检查：
 
@@ -76,7 +77,7 @@
 - 当前任务是否仍然有效
 - 相关文件是否已经有未提交修改
 - 上次状态文件是否与真实状态冲突
-- 是否已有测试失败
+- 是否已有与当前任务相关的 baseline 测试失败；全量测试成本高时，可只跑最小相关测试并记录未跑全量的原因
 - 是否存在未完成的中间改动
 
 如果 `.ai/STATE.md` 与真实世界冲突，以真实世界为准，并更新 `.ai/STATE.md`。
@@ -131,13 +132,13 @@ NEED_HUMAN_DECISION: <reason>
 
 ## 6. Completion Rule
 
-`repo-change/code task` 只有同时满足以下条件，才能标记任务完成：
+`repo-change task` 只有同时满足以下条件，才能标记任务完成：
 
 1. 当前任务目标实现
 2. Non-goals 没有被破坏
 3. Acceptance Criteria 全部满足
 4. 必要测试通过；插件功能变更必须包含自动化功能 smoke test，不能只靠人工手动验证
-5. Review 没有 P0/P1/P2 必修问题
+5. Review 没有 P0/P1/P2 必修问题；`SIMPLE` 任务可做 focused self-review，`COMPLEX` 或 `HIGH risk` 任务必须做 structured review
 6. `.ai/STATE.md` 已更新
 7. `.ai/runs/` 已写入本轮执行记录
 8. 必要经验已沉淀到 `.ai/memory/`
@@ -210,7 +211,7 @@ HEARTBEAT_OK
 
 ## 8. Execution Gates
 
-`repo-change/code task` 进入 EXECUTE 前，必须先判断任务复杂度：
+`repo-change task` 进入 EXECUTE 前，必须先判断任务复杂度：
 
 ```text
 complexity: SIMPLE / COMPLEX
@@ -223,6 +224,8 @@ complexity: SIMPLE / COMPLEX
 - 目标和 Acceptance Criteria 明确
 - 不涉及用户数据、安全边界、权限、发布、外部同步或真实 Zotero 库写入
 - 可以用直接命令、静态检查或等价端到端验证确认完成
+
+`HIGH risk` 必须升级为 `COMPLEX`，不得按 `SIMPLE` 执行。
 
 `SIMPLE` 任务可以在完成 BOOT、ROUTE 和 META_REFLECT 后直接执行，但只需记录：
 
@@ -296,7 +299,7 @@ PLAN 必须记录：
 
 ## 11. Git Checkpoint Rule
 
-每完成一个 `repo-change/code task`，必须创建一次 git checkpoint commit。
+每完成一个 `repo-change task`，必须创建一次 git checkpoint commit。
 
 `no-change review/advice task` 禁止 fake commit；最终输出使用：
 
@@ -349,7 +352,7 @@ feat / fix / docs / chore / refactor / test / build / ci
 
 提交前，必须在本机 `.ai/STATE.md` 和 `.ai/runs/<date>-<task-id>.md` 记录 staged 文件列表、验证结果和 `commit_hash: pending`。
 
-`.ai/` 是本机工作态，不进入 git checkpoint。提交完成后，必须在最终输出写明真实 commit hash；下一轮 BOOT 以 `git log -1 --format=%H` 为准同步真实状态。
+`.ai/` 是本机工作态，不进入 git checkpoint。`.ai` runtime records 默认不属于 Commit Scope；checkpoint commit 只要求仓库应版本化产物受控提交，不要求清理、提交或回滚本机 AI runtime dirty files。提交完成后，必须在最终输出写明真实 commit hash；下一轮 BOOT 以 `git log -1 --format=%H` 为准同步真实状态。
 
 ---
 
