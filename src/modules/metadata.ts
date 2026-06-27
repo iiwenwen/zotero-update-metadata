@@ -9,6 +9,56 @@ export function isSupportedMetadataURL(url: unknown): url is string {
   );
 }
 
+export function isNoTitleSpecifiedError(err: unknown) {
+  return /no title specified/i.test(getErrorMessage(err));
+}
+
+export function buildFallbackDoubanItem(doc: Document, url: string) {
+  const title = extractDoubanTitle(doc);
+  if (!title) {
+    throw new Error("Unable to extract a title from Douban page");
+  }
+
+  const item: Record<string, any> = {
+    __fallbackDoubanItem: true,
+    itemType: "book",
+    title,
+    url,
+  };
+
+  const author = queryContent(doc, 'meta[property="book:author"]');
+  if (author) {
+    item.creators = [
+      {
+        creatorType: "author",
+        lastName: author,
+        fieldMode: 1,
+      },
+    ];
+  }
+
+  const isbn = queryContent(doc, 'meta[property="book:isbn"]');
+  if (isbn) {
+    item.ISBN = isbn;
+  }
+
+  const description = queryContent(doc, 'meta[property="og:description"]');
+  if (description) {
+    item.abstractNote = description;
+  }
+
+  return item;
+}
+
+export function extractDoubanTitle(doc: Document) {
+  return (
+    queryContent(doc, 'meta[property="og:title"]')
+    || queryJSONLDName(doc)
+    || queryText(doc, "h1 span")
+    || cleanDoubanTitle(doc.title)
+  );
+}
+
 export async function getMeta() {
   const items = ZoteroPane.getSelectedItems().filter((item) => {
     return item.isRegularItem();
@@ -113,7 +163,7 @@ function getSettings(): {
   return settings;
 }
 
-async function translateDocument(doc: Document) {
+async function translateDocument(doc: Document, url: string) {
   const translate = new Zotero.Translate.Web();
   translate.setDocument(doc);
   const translators = await translate.getTranslators();
@@ -136,9 +186,13 @@ async function translateDocument(doc: Document) {
     if (!Array.isArray(translatedItems)) {
       throw new Error("Translator did not return an item list");
     }
-    return translatedItems;
+
+    return translatedItems.map((item) => normalizeTranslatedItem(item, doc, url));
   } catch (err) {
     ztoolkit.log(err);
+    if (isNoTitleSpecifiedError(err)) {
+      return [buildFallbackDoubanItem(doc, url)];
+    }
     throw new Error(`Zotero translator failed: ${getErrorMessage(err)}`);
   }
 }
@@ -191,7 +245,7 @@ async function _translateURLNow(url: string) {
     throw new Error("Unable to load metadata URL");
   }
 
-  const newItems = await translateDocument(doc);
+  const newItems = await translateDocument(doc, url);
   if (!newItems.length) {
     throw new Error("Zotero translator returned no metadata items");
   }
@@ -204,6 +258,68 @@ function getErrorMessage(err: unknown) {
     return err.message;
   }
   return String(err);
+}
+
+function normalizeTranslatedItem(item: any, doc: Document, url: string) {
+  if (!item || typeof item !== "object") {
+    return item;
+  }
+
+  const itemJSON = typeof item.toJSON === "function" ? item.toJSON() : item;
+  if (itemJSON.title) {
+    return item;
+  }
+
+  return {
+    ...buildFallbackDoubanItem(doc, url),
+    ...itemJSON,
+    title: extractDoubanTitle(doc),
+  };
+}
+
+function queryContent(doc: Document, selector: string) {
+  const element = doc.querySelector(selector);
+  const content = (element as HTMLMetaElement | null)?.content;
+  return cleanText(content);
+}
+
+function queryText(doc: Document, selector: string) {
+  return cleanText(doc.querySelector(selector)?.textContent);
+}
+
+function queryJSONLDName(doc: Document) {
+  const scripts = Array.from(
+    doc.querySelectorAll('script[type="application/ld+json"]'),
+  );
+
+  for (const script of scripts) {
+    if (!script) {
+      continue;
+    }
+
+    try {
+      const data = JSON.parse(script.textContent || "");
+      const name = Array.isArray(data) ? data[0]?.name : data?.name;
+      const title = cleanText(name);
+      if (title) {
+        return title;
+      }
+    } catch (err) {
+      ztoolkit.log(err);
+    }
+  }
+
+  return "";
+}
+
+function cleanDoubanTitle(title: unknown) {
+  return cleanText(String(title || "").replace(/\s*\(豆瓣\)\s*$/i, ""));
+}
+
+function cleanText(value: unknown) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function saveNote(newItem: any, oldItem: Zotero.Item) {

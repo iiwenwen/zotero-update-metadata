@@ -17,7 +17,7 @@
     "build": "tsc --noEmit && node scripts/build.mjs production",
     "stop": "node scripts/stop.mjs",
     "lint": "prettier --write . && eslint . --ext .ts --fix",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/smoke-metadata-douban-fallback.mjs",
     "release": "release-it --only-version --preReleaseId=beta",
     "update-deps": "npm update --save"
   },
