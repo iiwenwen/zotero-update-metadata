@@ -62,6 +62,7 @@ Autonomous Codex work must use the 42COG/RCSW method as part of the execution lo
 
 - Before planning a task, read the minimal 42COG context that applies to the change: `.42cog/meta/meta.md`, `.42cog/real/real.md`, `.42cog/cog/cog.md`, and only the relevant `spec/` or work documents.
 - In each task context, name the affected 42COG entities, constraints, non-goals, acceptance criteria, risks, and verification path.
+- Before planning, run a Meta-Reflection Gate: confirm the problem is real, consider whether it can be narrowed or redefined, keep the task within four core entities, look for mature existing solutions, and check whether the new goal could break old behavior.
 - During execution, keep changes scoped to the selected Issue and no more than four core entities; avoid broad scans of historical `.ai/`, `.42cog/`, or `.codex/` records unless the current task requires them.
 - Before completion, verify that the change still satisfies the relevant Real constraints and Cog entity boundaries, then record the run and create a controlled checkpoint commit for tracked task files.
 
