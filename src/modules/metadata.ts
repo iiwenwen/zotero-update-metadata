@@ -753,7 +753,7 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
   const result = await applyMetadataUpdateWithConfirmation(
     itemJSON,
     oldItem,
-    getPref("confirmBeforeUpdate") === true
+    shouldConfirmBeforeMetadataUpdate()
       ? (preview) => confirmMetadataUpdate(preview)
       : () => true,
   );
@@ -818,6 +818,11 @@ export type MetadataUpdateResult = {
   update: SafeMetadataUpdateResult;
   item: Zotero.Item;
 };
+
+export function shouldConfirmBeforeMetadataUpdate() {
+  const value = getPref("confirmBeforeUpdate");
+  return value === true || value === "true";
+}
 
 const PREVIEW_FIELDS = [
   "title",

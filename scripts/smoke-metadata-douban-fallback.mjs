@@ -33,6 +33,7 @@ try {
     lowersDatePrecision,
     mergeExtra,
     normalizeAttachmentSaveStrategy,
+    shouldConfirmBeforeMetadataUpdate,
     shouldTryAttachmentSave,
     translateWithMetadataProviders,
   } = require(outfile);
@@ -359,6 +360,39 @@ try {
 
   assert.equal(normalizeAttachmentSaveStrategy("always"), "always");
   assert.equal(normalizeAttachmentSaveStrategy("bad-value"), "none");
+
+  globalThis.Zotero.Prefs = {
+    get(prefName) {
+      assert.match(prefName, /confirmBeforeUpdate$/);
+      return "true";
+    },
+  };
+  assert.equal(
+    shouldConfirmBeforeMetadataUpdate(),
+    true,
+    "string true from Zotero preferences should enable update confirmation",
+  );
+
+  globalThis.Zotero.Prefs = {
+    get() {
+      return true;
+    },
+  };
+  assert.equal(shouldConfirmBeforeMetadataUpdate(), true);
+
+  globalThis.Zotero.Prefs = {
+    get() {
+      return false;
+    },
+  };
+  assert.equal(shouldConfirmBeforeMetadataUpdate(), false);
+
+  globalThis.Zotero.Prefs = {
+    get() {
+      return "false";
+    },
+  };
+  assert.equal(shouldConfirmBeforeMetadataUpdate(), false);
 
   const itemWithoutAttachments = createMockItem({
     itemTypeID: 1,
