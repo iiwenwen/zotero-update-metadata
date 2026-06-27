@@ -6,6 +6,8 @@
 main:
   push:
     - name: sync-to-github
+      imports:
+        - https://cnb.cool/iisyaoran/key/-/blob/main/.env
       stages:
         - name: check-github-credentials
           script:
