@@ -139,8 +139,7 @@ function bindPrefEvents() {
 
 function bindPrefCheckbox(doc: Document, prefKey: string) {
   const checkbox = doc.querySelector(`#${makeId(prefKey)}`) as
-    | (HTMLInputElement & { checked?: boolean })
-    | null;
+    (HTMLInputElement & { checked?: boolean }) | null;
 
   if (!checkbox) {
     return;

@@ -4,8 +4,8 @@ import { getPref } from "../utils/prefs";
 
 export function isSupportedMetadataURL(url: unknown): url is string {
   return (
-    typeof url === "string"
-    && /^https?:\/\/([^/]+\.)?douban\.com(?:[/:?#]|$)/i.test(url)
+    typeof url === "string" &&
+    /^https?:\/\/([^/]+\.)?douban\.com(?:[/:?#]|$)/i.test(url)
   );
 }
 
@@ -16,6 +16,7 @@ export function isNoTitleSpecifiedError(err: unknown) {
 type MetadataProviderInput = {
   url?: string;
   oldItem?: Zotero.Item;
+  settings?: ReturnType<typeof getSettings>;
 };
 
 type MetadataProvider = {
@@ -57,6 +58,12 @@ export type BatchUpdateSummaryLabels = {
 
 export type AttachmentSaveStrategy = "none" | "missing" | "always";
 export const METADATA_RESULT_CLOSE_TIME_MS = 8000;
+
+export type MetadataRunContext = {
+  win?: _ZoteroTypes.MainWindow;
+  items?: Zotero.Item[];
+  collectionID?: number;
+};
 
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
   const value = item?.getField("ISBN");
@@ -106,17 +113,18 @@ export function buildFallbackDoubanItem(doc: Document, url: string) {
 
 export function extractDoubanTitle(doc: Document) {
   return (
-    queryContent(doc, 'meta[property="og:title"]')
-    || queryJSONLDName(doc)
-    || queryText(doc, "h1 span")
-    || cleanDoubanTitle(doc.title)
+    queryContent(doc, 'meta[property="og:title"]') ||
+    queryJSONLDName(doc) ||
+    queryText(doc, "h1 span") ||
+    cleanDoubanTitle(doc.title)
   );
 }
 
-export async function getMeta() {
-  const items = ZoteroPane.getSelectedItems().filter((item) => {
+export async function getMeta(context: MetadataRunContext = {}) {
+  const items = (context.items ?? []).filter((item) => {
     return item.isRegularItem();
   });
+  const settings = getSettings(context.collectionID);
   const popWin = new ztoolkit.ProgressWindow(
     getString("itemmenu-updateMetadata-label"),
     {
@@ -175,7 +183,11 @@ export async function getMeta() {
         continue;
       }
 
-      const translatedResult = await translateMetadataForItem(url, item);
+      const translatedResult = await translateMetadataForItem(
+        url,
+        item,
+        settings,
+      );
       const translatedItem = translatedResult.item;
       if (!translatedItem) {
         throw new Error("No translated metadata found");
@@ -196,7 +208,7 @@ export async function getMeta() {
       }
 
       const startTime = Date.now();
-      const updateResult = await updateItem(translatedItem, item);
+      const updateResult = await updateItem(translatedItem, item, context.win);
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
       if (updateResult.confirmed) {
@@ -247,12 +259,11 @@ export async function getMeta() {
   popWin.startCloseTimer(METADATA_RESULT_CLOSE_TIME_MS);
 }
 
-function getSettings(): {
+function getSettings(collectionID?: number): {
   saveAttachments: boolean;
   libraryID: boolean | number;
   collections?: number[];
 } {
-  const coll = ZoteroPane.getSelectedCollection()?.id;
   const options = getPref("schema");
 
   // 创建返回对象的基本结构
@@ -266,14 +277,18 @@ function getSettings(): {
   };
 
   // 如果 coll 存在，才添加到 settings 中
-  if (typeof coll === "number") {
-    settings.collections = [coll];
+  if (typeof collectionID === "number") {
+    settings.collections = [collectionID];
   }
 
   return settings;
 }
 
-async function translateDoubanDocument(doc: Document, url: string) {
+async function translateDoubanDocument(
+  doc: Document,
+  url: string,
+  settings: ReturnType<typeof getSettings>,
+) {
   const translate = new Zotero.Translate.Web();
   translate.setDocument(doc);
   const translators = await translate.getTranslators();
@@ -290,14 +305,15 @@ async function translateDoubanDocument(doc: Document, url: string) {
 
   translate.setTranslator(translators[0]);
 
-  const options = getSettings();
   try {
-    const translatedItems = await translate.translate(options);
+    const translatedItems = await translate.translate(settings);
     if (!Array.isArray(translatedItems)) {
       throw new Error("Translator did not return an item list");
     }
 
-    return translatedItems.map((item) => normalizeTranslatedItem(item, doc, url));
+    return translatedItems.map((item) =>
+      normalizeTranslatedItem(item, doc, url),
+    );
   } catch (err) {
     ztoolkit.log(err);
     if (isNoTitleSpecifiedError(err)) {
@@ -309,7 +325,10 @@ async function translateDoubanDocument(doc: Document, url: string) {
   }
 }
 
-async function translateURL(url: string) {
+async function translateURL(
+  url: string,
+  settings: ReturnType<typeof getSettings>,
+) {
   let key = url;
   try {
     const uri = Services.io.newURI(url);
@@ -319,7 +338,7 @@ async function translateURL(url: string) {
   }
   // Limit to two requests per second per host
   const caller = _getConcurrentCaller(key, 500);
-  return caller.start(() => _translateURLNow(url));
+  return caller.start(() => _translateURLNow(url, settings));
 }
 
 const _concurrentCallers = new Map();
@@ -351,13 +370,16 @@ function importConcurrentCaller() {
   return Components.utils.import("resource://zotero/concurrentCaller.js");
 }
 
-async function _translateURLNow(url: string) {
+async function _translateURLNow(
+  url: string,
+  settings: ReturnType<typeof getSettings>,
+) {
   const doc = (await Zotero.HTTP.processDocuments(url, (doc) => doc))[0];
   if (!doc) {
     throw new Error("Unable to load metadata URL");
   }
 
-  const newItems = await translateDoubanDocument(doc, url);
+  const newItems = await translateDoubanDocument(doc, url, settings);
   if (!newItems.length) {
     throw new Error("Zotero translator returned no metadata items");
   }
@@ -369,7 +391,7 @@ async function translateDoubanURLProvider(input: MetadataProviderInput) {
   if (!input.url) {
     throw new Error("Douban provider requires a URL");
   }
-  return [await translateURL(input.url)];
+  return [await translateURL(input.url, input.settings ?? getSettings())];
 }
 
 async function translateISBNProvider(input: MetadataProviderInput) {
@@ -394,7 +416,9 @@ async function translateISBNProvider(input: MetadataProviderInput) {
 
   translate.setTranslator(translators[0]);
 
-  const translatedItems = await translate.translate(getSettings());
+  const translatedItems = await translate.translate(
+    input.settings ?? getSettings(),
+  );
 
   if (!Array.isArray(translatedItems) || !translatedItems.length) {
     throw new Error(`ISBN fallback returned no metadata for ${isbn}`);
@@ -454,11 +478,16 @@ export async function translateWithMetadataProviders(
   throw new Error(formatProviderFailure(attempts));
 }
 
-async function translateMetadataForItem(url: string, oldItem: Zotero.Item) {
+async function translateMetadataForItem(
+  url: string,
+  oldItem: Zotero.Item,
+  settings: ReturnType<typeof getSettings>,
+) {
   return translateWithMetadataProviders(
     {
       url,
       oldItem,
+      settings,
     },
     createMetadataProviders(),
   );
@@ -548,8 +577,7 @@ export function formatBatchUpdateSummaryLines(
     summary.canceled ? `${labels.canceled} ${summary.canceled}` : "",
     summary.fallback ? `${labels.fallback} ${summary.fallback}` : "",
     reasonText ? `${labels.reasons}: ${reasonText}` : "",
-  ]
-    .filter(Boolean);
+  ].filter(Boolean);
 }
 
 function formatBatchUpdateReasonText(summary: BatchUpdateSummary) {
@@ -599,7 +627,10 @@ export function shouldTryAttachmentSave(
   return attachmentIDs.length === 0;
 }
 
-export function buildAttachmentImportOptions(newItem: any, oldItem: Zotero.Item) {
+export function buildAttachmentImportOptions(
+  newItem: any,
+  oldItem: Zotero.Item,
+) {
   const attachment = getFirstAttachment(newItem);
   if (!attachment) {
     return {
@@ -693,7 +724,7 @@ function queryText(doc: Document, selector: string) {
 }
 
 function queryJSONLDName(doc: Document) {
-  const scripts = Array.from(
+  const scripts: Element[] = Array.from(
     doc.querySelectorAll('script[type="application/ld+json"]'),
   );
 
@@ -747,7 +778,11 @@ async function saveAttachments(newItem: any, oldItem: Zotero.Item) {
   return attachment;
 }
 
-async function updateItem(newItem: any, oldItem: Zotero.Item) {
+async function updateItem(
+  newItem: any,
+  oldItem: Zotero.Item,
+  win?: _ZoteroTypes.MainWindow,
+) {
   // for (const field of Object.keys(newItem)) {
   //   switch (field) {
   //     case "notes":
@@ -824,7 +859,7 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
     itemJSON,
     oldItem,
     shouldConfirmBeforeMetadataUpdate()
-      ? (preview) => confirmMetadataUpdate(preview)
+      ? (preview) => confirmMetadataUpdate(preview, win)
       : () => true,
   );
   ztoolkit.log(
@@ -923,10 +958,7 @@ export function applySafeMetadataUpdate(
   return result;
 }
 
-export function buildMetadataUpdatePreview(
-  newItem: any,
-  oldItem: Zotero.Item,
-) {
+export function buildMetadataUpdatePreview(newItem: any, oldItem: Zotero.Item) {
   return applySafeMetadataUpdate(
     normalizeTranslatedMetadataItem(newItem),
     oldItem,
@@ -1000,21 +1032,25 @@ function normalizeTranslatedMetadataItem(newItem: any) {
   return itemJSON;
 }
 
-function confirmMetadataUpdate(preview: SafeMetadataUpdateResult) {
+function confirmMetadataUpdate(
+  preview: SafeMetadataUpdateResult,
+  win?: _ZoteroTypes.MainWindow,
+) {
   const message = formatMetadataUpdatePreview(preview);
   const promptService = (globalThis as unknown as { Services?: any }).Services
     ?.prompt;
+  const promptWindow = win ?? addon.data.mainWindow;
 
   if (promptService?.confirm) {
     return promptService.confirm(
-      window,
+      promptWindow,
       getString("metadata-preview-title"),
       message,
     );
   }
 
-  if (typeof window.confirm === "function") {
-    return window.confirm(
+  if (typeof promptWindow?.confirm === "function") {
+    return promptWindow.confirm(
       `${getString("metadata-preview-title")}\n\n${message}`,
     );
   }
@@ -1028,7 +1064,9 @@ function formatPreviewValue(value: unknown) {
       .map((entry) => {
         if (entry && typeof entry === "object") {
           return (
-            (entry as any).tag || (entry as any).lastName || JSON.stringify(entry)
+            (entry as any).tag ||
+            (entry as any).lastName ||
+            JSON.stringify(entry)
           );
         }
         return String(entry);
@@ -1170,7 +1208,11 @@ function getEffectiveItemTypeID(
   return Zotero.ItemTypes.getID(newItem.itemType) || oldItem.itemTypeID;
 }
 
-function getSafeFieldValue(field: string, newValue: unknown, oldValue: unknown) {
+function getSafeFieldValue(
+  field: string,
+  newValue: unknown,
+  oldValue: unknown,
+) {
   if (field === "extra") {
     if (!splitExtraLines(newValue).length) {
       return {
@@ -1274,7 +1316,9 @@ function applySafeTags(
   const oldTags =
     typeof oldItem.getTags === "function" ? oldItem.getTags() || [] : [];
   const manualTags = oldTags.filter((tag: any) => tag?.type !== 1);
-  const oldTagNames = new Set(oldTags.map((tag: any) => tag?.tag).filter(Boolean));
+  const oldTagNames = new Set(
+    oldTags.map((tag: any) => tag?.tag).filter(Boolean),
+  );
   const newAutomaticTags = newItem.tags
     .filter((tag: any) => tag?.tag && !oldTagNames.has(tag.tag))
     .map((tag: any) => ({
@@ -1320,9 +1364,9 @@ export function isRelatedTitle(oldTitle: unknown, newTitle: unknown) {
   }
 
   if (
-    oldNormalized === newNormalized
-    || oldNormalized.includes(newNormalized)
-    || newNormalized.includes(oldNormalized)
+    oldNormalized === newNormalized ||
+    oldNormalized.includes(newNormalized) ||
+    newNormalized.includes(oldNormalized)
   ) {
     return true;
   }

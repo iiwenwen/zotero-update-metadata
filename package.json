@@ -16,8 +16,8 @@
   "scripts": {
     "start": "zotero-plugin serve",
     "build": "zotero-plugin build --dist build && tsc --noEmit",
-    "lint:check": "prettier --check package.json tsconfig.json zotero-plugin.config.ts eslint.config.mjs && eslint .",
-    "lint:fix": "prettier --write package.json tsconfig.json zotero-plugin.config.ts eslint.config.mjs && eslint . --fix",
+    "lint:check": "prettier --check . && eslint .",
+    "lint:fix": "prettier --write . && eslint . --fix",
     "lint": "npm run lint:fix",
     "test": "node scripts/smoke-metadata-douban-fallback.mjs",
     "release": "release-it --only-version --preReleaseId=beta",

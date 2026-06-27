@@ -500,11 +500,19 @@ try {
     true,
   );
   assert.equal(
-    shouldTryAttachmentSave(translatedWithAttachment, itemWithAttachments, "missing"),
+    shouldTryAttachmentSave(
+      translatedWithAttachment,
+      itemWithAttachments,
+      "missing",
+    ),
     false,
   );
   assert.equal(
-    shouldTryAttachmentSave(translatedWithAttachment, itemWithAttachments, "always"),
+    shouldTryAttachmentSave(
+      translatedWithAttachment,
+      itemWithAttachments,
+      "always",
+    ),
     true,
   );
 
@@ -523,7 +531,10 @@ try {
   );
 
   assert.deepEqual(
-    buildAttachmentImportOptions(translatedWithAttachment, itemWithoutAttachments),
+    buildAttachmentImportOptions(
+      translatedWithAttachment,
+      itemWithoutAttachments,
+    ),
     {
       ok: true,
       options: {

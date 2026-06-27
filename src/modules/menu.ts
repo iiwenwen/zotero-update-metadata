@@ -17,6 +17,10 @@ type MenuContext = {
   setVisible?: (visible: boolean) => void;
 };
 
+type MainWindowWithPane = _ZoteroTypes.MainWindow & {
+  ZoteroPane?: _ZoteroTypes.ZoteroPane;
+};
+
 type MenuManager = {
   registerMenu?: (options: unknown) => string | false;
   unregisterMenu?: (menuID: string) => boolean;
@@ -36,12 +40,12 @@ function isRegularZoteroItem(item: Zotero.Item) {
   return typeof item?.isRegularItem === "function" && item.isRegularItem();
 }
 
-export function registerMenu() {
+export function registerMenu(win: _ZoteroTypes.MainWindow) {
   const menuIcon = `chrome://${config.addonRef}/content/icons/favicon.png`;
   const menuManager = (Zotero as unknown as { MenuManager?: MenuManager })
     .MenuManager;
 
-  unregisterMenu();
+  unregisterMenu(win);
 
   if (menuManager?.registerMenu) {
     const registered = menuManager.registerMenu({
@@ -58,9 +62,14 @@ export function registerMenu() {
               "label",
               getString("itemmenu-updateMetadata-label"),
             );
-            updateMenuDisabledState(context);
+            updateMenuDisabledState(win, context);
           },
-          onCommand: () => void getMeta(),
+          onCommand: (_event: Event, context: MenuContext = {}) =>
+            void getMeta({
+              win,
+              items: context.items,
+              collectionID: getSelectedCollectionID(win),
+            }),
         },
       ],
     });
@@ -73,11 +82,11 @@ export function registerMenu() {
     ztoolkit.log("Zotero MenuManager rejected item context menu.");
   }
 
-  registerFallbackMenu(menuIcon);
+  registerFallbackMenu(win, menuIcon);
 }
 
-function registerFallbackMenu(menuIcon: string) {
-  const doc = window.document;
+function registerFallbackMenu(win: _ZoteroTypes.MainWindow, menuIcon: string) {
+  const doc = win.document;
   doc.getElementById(MENU_ID)?.remove();
 
   const itemContextMenu = findItemContextMenu(doc);
@@ -91,31 +100,52 @@ function registerFallbackMenu(menuIcon: string) {
   menuItem.setAttribute("label", getString("itemmenu-updateMetadata-label"));
   menuItem.setAttribute("class", "menuitem-iconic");
   menuItem.setAttribute("image", menuIcon);
-  menuItem.addEventListener("command", () => void getMeta());
+  menuItem.addEventListener(
+    "command",
+    () =>
+      void getMeta({
+        win,
+        collectionID: getSelectedCollectionID(win),
+      }),
+  );
 
   itemContextMenu.append(menuItem);
   registeredMenuItem = menuItem;
-  updateMenuDisabledState();
+  updateMenuDisabledState(win);
 }
 
-function getRegularItems(context?: MenuContext) {
-  const items = context?.items ?? ZoteroPane.getSelectedItems();
+function getSelectedItems(win: _ZoteroTypes.MainWindow) {
+  return (win as MainWindowWithPane).ZoteroPane?.getSelectedItems() ?? [];
+}
+
+function getSelectedCollectionID(win: _ZoteroTypes.MainWindow) {
+  return (win as MainWindowWithPane).ZoteroPane?.getSelectedCollection()?.id;
+}
+
+function getRegularItems(win: _ZoteroTypes.MainWindow, context?: MenuContext) {
+  const items = context?.items ?? getSelectedItems(win);
   return items.filter(isRegularZoteroItem);
 }
 
-function canUpdateSelectedItems(context?: MenuContext) {
-  const selectedItems = context?.items ?? ZoteroPane.getSelectedItems();
-  const items = getRegularItems(context);
+function canUpdateSelectedItems(
+  win: _ZoteroTypes.MainWindow,
+  context?: MenuContext,
+) {
+  const selectedItems = context?.items ?? getSelectedItems(win);
+  const items = getRegularItems(win, context);
   return (
-    items.length > 0
-    && items.length === selectedItems.length
-    && items.every((item) => isSupportedMetadataURL(item.getField("url")))
+    items.length > 0 &&
+    items.length === selectedItems.length &&
+    items.every((item) => isSupportedMetadataURL(item.getField("url")))
   );
 }
 
-function updateMenuDisabledState(context?: MenuContext) {
-  const enabled = canUpdateSelectedItems(context);
-  const menuItem = context?.menuElem ?? document.getElementById(MENU_ID);
+function updateMenuDisabledState(
+  win: _ZoteroTypes.MainWindow,
+  context?: MenuContext,
+) {
+  const enabled = canUpdateSelectedItems(win, context);
+  const menuItem = context?.menuElem ?? win.document.getElementById(MENU_ID);
 
   context?.setVisible?.(true);
   context?.setEnabled?.(enabled);
@@ -128,7 +158,7 @@ function updateMenuDisabledState(context?: MenuContext) {
   menuItem?.setAttribute("disabled", "true");
 }
 
-export async function selectoritem() {
+export async function selectoritem(win: _ZoteroTypes.MainWindow) {
   if (registeredMenuKey) {
     return;
   }
@@ -137,27 +167,28 @@ export async function selectoritem() {
     return;
   }
 
-  const itemsTreeElement = document.getElementById("zotero-items-tree");
+  const itemsTreeElement = win.document.getElementById("zotero-items-tree");
   if (!itemsTreeElement) {
     ztoolkit.log("Zotero items tree was not found.");
     return;
   }
 
-  selectionGuardListener = () => updateMenuDisabledState();
+  selectionGuardListener = () => updateMenuDisabledState(win);
   selectionGuardTarget = itemsTreeElement;
   itemsTreeElement.addEventListener("contextmenu", selectionGuardListener);
 }
 
-export function unregisterMenu() {
+export function unregisterMenu(win?: _ZoteroTypes.MainWindow) {
   if (registeredMenuKey) {
-    (Zotero as unknown as { MenuManager?: MenuManager }).MenuManager
-      ?.unregisterMenu?.(registeredMenuKey);
+    (
+      Zotero as unknown as { MenuManager?: MenuManager }
+    ).MenuManager?.unregisterMenu?.(registeredMenuKey);
     registeredMenuKey = null;
   }
 
   registeredMenuItem?.remove();
   registeredMenuItem = null;
-  document.getElementById(MENU_ID)?.remove();
+  win?.document.getElementById(MENU_ID)?.remove();
 
   if (selectionGuardTarget && selectionGuardListener) {
     selectionGuardTarget.removeEventListener(

@@ -15,7 +15,6 @@ async function onStartup() {
 
   // TODO: Remove this after zotero#3387 is merged
   if (__env__ === "development") {
-    // Keep in sync with the scripts/startup.mjs
     const loadDevToolWhen = `Plugin ${addon.data.config.addonID} startup`;
     ztoolkit.log(loadDevToolWhen);
   }
@@ -32,6 +31,7 @@ async function onStartup() {
 
 async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   // Create ztoolkit for every window
+  addon.data.mainWindow = win;
   addon.data.ztoolkit = createZToolkit();
 
   const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
@@ -51,9 +51,9 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
     text: `[30%] ${getString("startup-begin")}`,
   });
 
-  registerMenu();
+  registerMenu(win);
 
-  await selectoritem();
+  await selectoritem(win);
 
   await Zotero.Promise.delay(1000);
 
@@ -64,18 +64,22 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   popupWin.startCloseTimer(5000);
 }
 
-async function onMainWindowUnload(win: Window): Promise<void> {
-  unregisterMenu();
+async function onMainWindowUnload(win: _ZoteroTypes.MainWindow): Promise<void> {
+  unregisterMenu(win);
+  if (addon.data.mainWindow === win) {
+    addon.data.mainWindow = undefined;
+  }
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();
 }
 
 function onShutdown(): void {
-  unregisterMenu();
+  unregisterMenu(addon.data.mainWindow);
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();
   // Remove addon object
   addon.data.alive = false;
+  addon.data.mainWindow = undefined;
   // @ts-expect-error - Plugin instance is not typed
   delete Zotero[addon.data.config.addonInstance];
 }

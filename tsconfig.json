@@ -1,5 +1,5 @@
 {
-  "extends": "zotero-types/entries/mainWindow/",
+  "extends": "zotero-types/entries/sandbox/",
   "compilerOptions": {
     "composite": false,
     "experimentalDecorators": true,

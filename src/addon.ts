@@ -10,6 +10,7 @@ class Addon {
     // Env type, see build.js
     env: "development" | "production";
     initialized?: boolean;
+    mainWindow?: _ZoteroTypes.MainWindow;
     ztoolkit: ZToolkit;
     locale?: {
       current: any;
