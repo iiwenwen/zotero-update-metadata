@@ -20,9 +20,12 @@ try {
   });
 
   const {
+    applySafeMetadataUpdate,
     buildFallbackDoubanItem,
     extractDoubanTitle,
     isNoTitleSpecifiedError,
+    lowersDatePrecision,
+    mergeExtra,
   } = require(outfile);
 
   const documentWithMeta = createMockDocument({
@@ -72,6 +75,88 @@ try {
   assert.equal(extractDoubanTitle(documentWithJSONLD), "JSON-LD Title");
   assert.equal(isNoTitleSpecifiedError(new Error("No title specified")), true);
   assert.equal(isNoTitleSpecifiedError(new Error("Network failed")), false);
+  assert.equal(lowersDatePrecision("2020-05-06", "2020"), true);
+  assert.equal(lowersDatePrecision("2020", "2020-05-06"), false);
+  assert.equal(
+    mergeExtra("DOI: old-doi\nUser Note: keep me", "DOI: new-doi\nISBN: 978"),
+    "DOI: old-doi\nUser Note: keep me\nISBN: 978",
+  );
+
+  globalThis.Zotero = {
+    ItemTypes: {
+      getID(itemType) {
+        return { book: 1, webpage: 2 }[itemType] || 0;
+      },
+    },
+    ItemFields: {
+      getID(field) {
+        return field;
+      },
+      isValidForType() {
+        return true;
+      },
+    },
+  };
+
+  const mockItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "Norwegian Wood",
+      date: "1987-09-04",
+      publisher: "Existing Publisher",
+      extra: "DOI: old-doi\nUser Note: keep me",
+    },
+    tags: [
+      { tag: "manual tag", type: 0 },
+      { tag: "old automatic", type: 1 },
+    ],
+  });
+
+  const updateResult = applySafeMetadataUpdate(
+    {
+      itemType: "webpage",
+      title: "Completely Different Book",
+      date: "1987",
+      publisher: "",
+      extra: "DOI: new-doi\nISBN: 9780099448822",
+      tags: [{ tag: "translated tag" }],
+    },
+    mockItem,
+  );
+
+  assert.equal(mockItem.itemTypeID, 1);
+  assert.equal(mockItem.getField("title"), "Norwegian Wood");
+  assert.equal(mockItem.getField("date"), "1987-09-04");
+  assert.equal(mockItem.getField("publisher"), "Existing Publisher");
+  assert.equal(
+    mockItem.getField("extra"),
+    "DOI: old-doi\nUser Note: keep me\nISBN: 9780099448822",
+  );
+  assert.deepEqual(mockItem.getTags(), [
+    { tag: "manual tag", type: 0 },
+    { tag: "translated tag", type: 1 },
+  ]);
+  assert.deepEqual(
+    new Set(updateResult.skipped.map((skip) => skip.field)),
+    new Set(["itemType", "title", "date", "publisher"]),
+  );
+
+  const mockItemWithAutomaticTags = createMockItem({
+    itemTypeID: 1,
+    fields: {},
+    tags: [{ tag: "keep automatic when incoming empty", type: 1 }],
+  });
+  const emptyTagsResult = applySafeMetadataUpdate(
+    { tags: [] },
+    mockItemWithAutomaticTags,
+  );
+  assert.deepEqual(mockItemWithAutomaticTags.getTags(), [
+    { tag: "keep automatic when incoming empty", type: 1 },
+  ]);
+  assert.equal(
+    emptyTagsResult.skipped.some((skip) => skip.field === "tags"),
+    true,
+  );
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
@@ -91,6 +176,32 @@ function createMockDocument({ title, selectors }) {
         return [];
       }
       return Array.isArray(value) ? value : [value];
+    },
+  };
+}
+
+function createMockItem({ itemTypeID, fields, tags }) {
+  return {
+    itemTypeID,
+    fields: { ...fields },
+    tags: [...tags],
+    getField(field) {
+      return this.fields[field] || "";
+    },
+    setField(field, value) {
+      this.fields[field] = value;
+    },
+    setType(typeID) {
+      this.itemTypeID = typeID;
+    },
+    setCreators(creators) {
+      this.creators = creators;
+    },
+    getTags() {
+      return [...this.tags];
+    },
+    setTags(tags) {
+      this.tags = tags;
     },
   };
 }

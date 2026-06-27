@@ -426,30 +426,104 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
   }
 
   ztoolkit.log(`Update item from translated ${itemJSON.itemType ?? "item"}`);
-
-  try {
-    oldItem.fromJSON(itemJSON);
-  } catch (err) {
-    ztoolkit.log(`fromJSON update failed, falling back to field update: ${err}`);
-    updateItemFields(itemJSON, oldItem);
-  }
+  const result = applySafeMetadataUpdate(itemJSON, oldItem);
+  ztoolkit.log(
+    `Applied ${result.applied.length} metadata changes, skipped ${result.skipped.length}`,
+  );
 
   await oldItem.saveTx();
   return oldItem;
 }
 
-function updateItemFields(newItem: any, oldItem: Zotero.Item) {
-  if (newItem.itemType) {
-    const itemTypeID = Zotero.ItemTypes.getID(newItem.itemType);
-    if (itemTypeID) {
-      oldItem.setType(itemTypeID);
-    }
+type MetadataChange = {
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+};
+
+type MetadataSkip = {
+  field: string;
+  reason: string;
+};
+
+export type SafeMetadataUpdateResult = {
+  applied: MetadataChange[];
+  skipped: MetadataSkip[];
+};
+
+export function applySafeMetadataUpdate(
+  newItem: any,
+  oldItem: Zotero.Item,
+): SafeMetadataUpdateResult {
+  const result: SafeMetadataUpdateResult = {
+    applied: [],
+    skipped: [],
+  };
+
+  applySafeItemType(newItem, oldItem, result);
+  applySafeCreators(newItem, oldItem, result);
+  applySafeFields(newItem, oldItem, result);
+  applySafeTags(newItem, oldItem, result);
+
+  return result;
+}
+
+function applySafeItemType(
+  newItem: any,
+  oldItem: Zotero.Item,
+  result: SafeMetadataUpdateResult,
+) {
+  if (!newItem.itemType) {
+    return;
   }
 
-  if (Array.isArray(newItem.creators)) {
+  if (newItem.itemType === "webpage") {
+    result.skipped.push({
+      field: "itemType",
+      reason: "skip webpage fallback item type",
+    });
+    return;
+  }
+
+  const itemTypeID = Zotero.ItemTypes.getID(newItem.itemType);
+  if (!itemTypeID || itemTypeID === oldItem.itemTypeID) {
+    return;
+  }
+
+  const oldItemTypeID = oldItem.itemTypeID;
+  oldItem.setType(itemTypeID);
+  result.applied.push({
+    field: "itemType",
+    oldValue: oldItemTypeID,
+    newValue: newItem.itemType,
+  });
+}
+
+function applySafeCreators(
+  newItem: any,
+  oldItem: Zotero.Item,
+  result: SafeMetadataUpdateResult,
+) {
+  if (Array.isArray(newItem.creators) && newItem.creators.length) {
     oldItem.setCreators(newItem.creators);
+    result.applied.push({
+      field: "creators",
+      oldValue: undefined,
+      newValue: newItem.creators,
+    });
+  } else if ("creators" in newItem) {
+    result.skipped.push({
+      field: "creators",
+      reason: "skip empty creators",
+    });
   }
+}
 
+function applySafeFields(
+  newItem: any,
+  oldItem: Zotero.Item,
+  result: SafeMetadataUpdateResult,
+) {
   const fields = [
     "title",
     "shortTitle",
@@ -480,10 +554,192 @@ function updateItemFields(newItem: any, oldItem: Zotero.Item) {
       continue;
     }
 
-    oldItem.setField(field, newItem[field] ?? "");
+    const oldValue = oldItem.getField(field);
+    const safeValue = getSafeFieldValue(field, newItem[field], oldValue);
+    if (safeValue.skip) {
+      result.skipped.push({
+        field,
+        reason: safeValue.reason,
+      });
+      continue;
+    }
+
+    oldItem.setField(field, safeValue.value);
+    result.applied.push({
+      field,
+      oldValue,
+      newValue: safeValue.value,
+    });
+  }
+}
+
+function getSafeFieldValue(field: string, newValue: unknown, oldValue: unknown) {
+  if (field === "extra") {
+    if (!splitExtraLines(newValue).length) {
+      return {
+        skip: true as const,
+        reason: "skip empty value",
+      };
+    }
+    return {
+      skip: false as const,
+      value: mergeExtra(oldValue, newValue),
+    };
   }
 
-  if (Array.isArray(newItem.tags)) {
-    oldItem.setTags(newItem.tags);
+  const oldText = cleanText(oldValue);
+  const newText = cleanText(newValue);
+
+  if (!newText) {
+    return {
+      skip: true as const,
+      reason: "skip empty value",
+    };
   }
+
+  if (field === "title" && oldText && !isRelatedTitle(oldText, newText)) {
+    return {
+      skip: true as const,
+      reason: "skip unrelated title",
+    };
+  }
+
+  if (field === "date" && lowersDatePrecision(oldText, newText)) {
+    return {
+      skip: true as const,
+      reason: "skip lower precision date",
+    };
+  }
+
+  return {
+    skip: false as const,
+    value: newText,
+  };
+}
+
+export function mergeExtra(oldExtra: unknown, newExtra: unknown) {
+  const oldLines = splitExtraLines(oldExtra);
+  const mergedLines = [...oldLines];
+  const existingKeys = new Set(
+    oldLines
+      .map((line) => getExtraKey(line))
+      .filter((key): key is string => typeof key === "string"),
+  );
+
+  for (const line of splitExtraLines(newExtra)) {
+    const key = getExtraKey(line);
+    if (key) {
+      if (!existingKeys.has(key)) {
+        mergedLines.push(line);
+        existingKeys.add(key);
+      }
+      continue;
+    }
+
+    if (!mergedLines.includes(line)) {
+      mergedLines.push(line);
+    }
+  }
+
+  return mergedLines.join("\n");
+}
+
+function splitExtraLines(extra: unknown) {
+  return String(extra || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getExtraKey(line: string) {
+  const match = /^([^:\n]+):\s*.*$/.exec(line);
+  return match?.[1]?.trim().toLowerCase();
+}
+
+function applySafeTags(
+  newItem: any,
+  oldItem: Zotero.Item,
+  result: SafeMetadataUpdateResult,
+) {
+  if (!Array.isArray(newItem.tags)) {
+    return;
+  }
+
+  if (!newItem.tags.length) {
+    result.skipped.push({
+      field: "tags",
+      reason: "skip empty tags",
+    });
+    return;
+  }
+
+  const oldTags =
+    typeof oldItem.getTags === "function" ? oldItem.getTags() || [] : [];
+  const manualTags = oldTags.filter((tag: any) => tag?.type !== 1);
+  const oldTagNames = new Set(oldTags.map((tag: any) => tag?.tag).filter(Boolean));
+  const newAutomaticTags = newItem.tags
+    .filter((tag: any) => tag?.tag && !oldTagNames.has(tag.tag))
+    .map((tag: any) => ({
+      ...tag,
+      type: 1,
+    }));
+
+  oldItem.setTags([...manualTags, ...newAutomaticTags]);
+  result.applied.push({
+    field: "tags",
+    oldValue: oldTags,
+    newValue: [...manualTags, ...newAutomaticTags],
+  });
+}
+
+export function lowersDatePrecision(oldDate: unknown, newDate: unknown) {
+  const oldPrecision = getDatePrecision(cleanText(oldDate));
+  const newPrecision = getDatePrecision(cleanText(newDate));
+  return oldPrecision > 0 && newPrecision > 0 && newPrecision < oldPrecision;
+}
+
+function getDatePrecision(date: string) {
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(date)) {
+    return 3;
+  }
+  if (/^\d{4}-\d{1,2}$/.test(date)) {
+    return 2;
+  }
+  if (/^\d{4}$/.test(date)) {
+    return 1;
+  }
+  return 0;
+}
+
+export function isRelatedTitle(oldTitle: unknown, newTitle: unknown) {
+  const oldNormalized = normalizeTitle(oldTitle);
+  const newNormalized = normalizeTitle(newTitle);
+
+  if (!oldNormalized || !newNormalized) {
+    return true;
+  }
+
+  if (
+    oldNormalized === newNormalized
+    || oldNormalized.includes(newNormalized)
+    || newNormalized.includes(oldNormalized)
+  ) {
+    return true;
+  }
+
+  const oldTokens = titleTokens(oldNormalized);
+  const newTokens = titleTokens(newNormalized);
+  const overlap = oldTokens.filter((token) => newTokens.includes(token)).length;
+  return overlap / Math.min(oldTokens.length, newTokens.length) >= 0.35;
+}
+
+function normalizeTitle(title: unknown) {
+  return cleanText(title)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function titleTokens(title: string) {
+  return title.split(/\s+/).filter(Boolean);
 }
