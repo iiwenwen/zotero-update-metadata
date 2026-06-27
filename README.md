@@ -41,16 +41,16 @@ Use this code under the AGPL. No warranty is provided. Follow the laws in your r
 
 ## Development
 
-Run `npm run start` to build the add-on, start Zotero with the configured
-development profile, and watch `src/` plus `addon/` changes. While Zotero is
-already running, `npm run reload` sends only the ztoolkit debug reload URL to
-the current Zotero process, so most source and locale edits do not need a full
-Zotero restart.
+Copy `.env.example` to `.env` and point `ZOTERO_PLUGIN_PROFILE_PATH` and
+`ZOTERO_PLUGIN_DATA_DIR` at an isolated development profile and data directory.
 
-Use `npm run reload:print` to inspect the reload command without launching
-Zotero. A full restart is still recommended after changing `addon/manifest.json`,
-bootstrap startup/shutdown behavior, dependency versions, or the configured
-profile/data directory.
+Run `npm run start` to build the add-on with `zotero-plugin-scaffold`, start
+Zotero with that configured development profile, and watch `src/` plus `addon/`
+changes. The old standalone reload shortcuts are no longer exposed because a
+bare `zotero://ztoolkit-debug` URL can be handled by the wrong Zotero profile.
+
+Run `npm run build` for a production XPI in `build/`, or `npm test` for the
+Node smoke test that does not start Zotero.
 
 Maintainer-specific agent workflow instructions are kept out of this
 user-facing README. See `AGENTS.md` for Codex and automation guidance.

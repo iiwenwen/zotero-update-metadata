@@ -1,5 +1,6 @@
 {
   "name": "zotero-update-metadata",
+  "type": "module",
   "version": "1.1.3",
   "description": "Zotero update metadata for translation ",
   "config": {
@@ -13,11 +14,8 @@
   },
   "main": "src/index.ts",
   "scripts": {
-    "start": "node scripts/server.mjs",
-    "build": "tsc --noEmit && node scripts/build.mjs production",
-    "reload": "node scripts/reload.mjs",
-    "reload:print": "node scripts/reload.mjs --print",
-    "stop": "node scripts/stop.mjs",
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build --dist build && tsc --noEmit",
     "lint": "prettier --write . && eslint . --ext .ts --fix",
     "test": "node scripts/smoke-metadata-douban-fallback.mjs",
     "release": "release-it --only-version --preReleaseId=beta",
@@ -25,14 +23,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com//iiwenwen/zotero-update-metadata.git"
+    "url": "git+https://github.com/iiwenwen/zotero-update-metadata.git"
   },
   "author": "iiwenwen",
   "license": "AGPL-3.0-or-later",
   "bugs": {
-    "url": "https://github.com//iiwenwen/zotero-update-metadata/issues"
+    "url": "https://github.com/iiwenwen/zotero-update-metadata/issues"
   },
-  "homepage": "https://github.com//iiwenwen/zotero-update-metadata#readme",
+  "homepage": "https://github.com/iiwenwen/zotero-update-metadata#readme",
   "dependencies": {
     "zotero-plugin-toolkit": "^5.1.4"
   },
@@ -49,6 +47,7 @@
     "release-it": "^17.10.0",
     "replace-in-file": "^7.2.0",
     "typescript": "^5.6.3",
+    "zotero-plugin-scaffold": "^0.8.6",
     "zotero-types": "^4.1.2"
   },
   "eslintConfig": {

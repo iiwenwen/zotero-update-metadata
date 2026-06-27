@@ -41,14 +41,15 @@
 
 ## 开发
 
-运行 `npm run start` 会构建插件、用配置的开发 profile 启动 Zotero，并监听
-`src/` 与 `addon/` 变化。Zotero 已经运行时，`npm run reload` 只向当前 Zotero
-进程发送 ztoolkit debug reload URL，因此大多数源码和 locale 修改不需要完整重启
-Zotero。
+复制 `.env.example` 为 `.env`，并确保 `ZOTERO_PLUGIN_PROFILE_PATH` 和
+`ZOTERO_PLUGIN_DATA_DIR` 指向隔离的开发 profile 与数据目录。
 
-可用 `npm run reload:print` 查看 reload 命令而不启动 Zotero。修改
-`addon/manifest.json`、bootstrap 启停逻辑、依赖版本，或切换 profile/data 目录后，
-仍建议完整重启 Zotero。
+运行 `npm run start` 会通过 `zotero-plugin-scaffold` 构建插件、用配置的开发
+profile 启动 Zotero，并监听 `src/` 与 `addon/` 变化。旧的独立 reload 快捷入口已
+不再暴露，因为裸 `zotero://ztoolkit-debug` URL 可能被错误的 Zotero profile 接管。
+
+运行 `npm run build` 可在 `build/` 生成生产 XPI；运行 `npm test` 只执行不会启动
+Zotero 的 Node smoke test。
 
 ## ChangeLog
 
