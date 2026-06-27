@@ -114,13 +114,17 @@ export async function getMeta() {
       }
 
       const startTime = Date.now();
-      await updateItem(translatedItem, item);
+      const updateResult = await updateItem(translatedItem, item);
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
       popWin.changeLine({
-        type: "success",
+        type: updateResult.confirmed ? "success" : "default",
         progress: 0,
-        text: `${current}${getString("message-updateItem-success")}`,
+        text: `${current}${getString(
+          updateResult.confirmed
+            ? "message-updateItem-success"
+            : "message-updateItem-cancel",
+        )}`,
         idx: 1,
       });
     } catch (err) {
@@ -344,10 +348,6 @@ async function saveAttachments(newItem: any, oldItem: Zotero.Item) {
 }
 
 async function updateItem(newItem: any, oldItem: Zotero.Item) {
-  if (!newItem) {
-    throw new Error("No translated metadata found");
-  }
-
   // for (const field of Object.keys(newItem)) {
   //   switch (field) {
   //     case "notes":
@@ -418,21 +418,20 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
   // }
   // await oldItem.saveTx();
   // return oldItem;
-  const itemJSON =
-    typeof newItem.toJSON === "function" ? newItem.toJSON() : newItem;
-
-  if (!itemJSON || typeof itemJSON !== "object") {
-    throw new Error("Translated metadata is not a valid item object");
-  }
-
+  const itemJSON = normalizeTranslatedMetadataItem(newItem);
   ztoolkit.log(`Update item from translated ${itemJSON.itemType ?? "item"}`);
-  const result = applySafeMetadataUpdate(itemJSON, oldItem);
+  const result = await applyMetadataUpdateWithConfirmation(
+    itemJSON,
+    oldItem,
+    getPref("confirmBeforeUpdate") === true
+      ? (preview) => confirmMetadataUpdate(preview)
+      : () => true,
+  );
   ztoolkit.log(
-    `Applied ${result.applied.length} metadata changes, skipped ${result.skipped.length}`,
+    `Applied ${result.update.applied.length} metadata changes, skipped ${result.update.skipped.length}`,
   );
 
-  await oldItem.saveTx();
-  return oldItem;
+  return result;
 }
 
 type MetadataChange = {
@@ -451,27 +450,166 @@ export type SafeMetadataUpdateResult = {
   skipped: MetadataSkip[];
 };
 
+type ApplySafeMetadataUpdateOptions = {
+  dryRun?: boolean;
+};
+
+export type MetadataUpdateResult = {
+  confirmed: boolean;
+  update: SafeMetadataUpdateResult;
+  item: Zotero.Item;
+};
+
+const PREVIEW_FIELDS = [
+  "title",
+  "creators",
+  "ISBN",
+  "publisher",
+  "date",
+  "abstractNote",
+  "extra",
+  "tags",
+];
+
 export function applySafeMetadataUpdate(
   newItem: any,
   oldItem: Zotero.Item,
+  options: ApplySafeMetadataUpdateOptions = {},
 ): SafeMetadataUpdateResult {
   const result: SafeMetadataUpdateResult = {
     applied: [],
     skipped: [],
   };
 
-  applySafeItemType(newItem, oldItem, result);
-  applySafeCreators(newItem, oldItem, result);
-  applySafeFields(newItem, oldItem, result);
-  applySafeTags(newItem, oldItem, result);
+  applySafeItemType(newItem, oldItem, result, options);
+  applySafeCreators(newItem, oldItem, result, options);
+  applySafeFields(newItem, oldItem, result, options);
+  applySafeTags(newItem, oldItem, result, options);
 
   return result;
+}
+
+export function buildMetadataUpdatePreview(
+  newItem: any,
+  oldItem: Zotero.Item,
+) {
+  return applySafeMetadataUpdate(
+    normalizeTranslatedMetadataItem(newItem),
+    oldItem,
+    {
+      dryRun: true,
+    },
+  );
+}
+
+export function formatMetadataUpdatePreview(result: SafeMetadataUpdateResult) {
+  const lines: string[] = [];
+
+  for (const change of result.applied) {
+    if (!PREVIEW_FIELDS.includes(change.field)) {
+      continue;
+    }
+    lines.push(
+      `${change.field}: ${formatPreviewValue(
+        change.oldValue,
+      )} -> ${formatPreviewValue(change.newValue)}`,
+    );
+  }
+
+  for (const skip of result.skipped) {
+    if (!PREVIEW_FIELDS.includes(skip.field)) {
+      continue;
+    }
+    lines.push(`${skip.field}: skipped (${skip.reason})`);
+  }
+
+  return lines.length ? lines.join("\n") : "No safe metadata changes.";
+}
+
+export async function applyMetadataUpdateWithConfirmation(
+  newItem: any,
+  oldItem: Zotero.Item,
+  confirmUpdate: (preview: SafeMetadataUpdateResult) => boolean,
+): Promise<MetadataUpdateResult> {
+  const itemJSON = normalizeTranslatedMetadataItem(newItem);
+  const preview = buildMetadataUpdatePreview(itemJSON, oldItem);
+
+  if (!confirmUpdate(preview)) {
+    return {
+      confirmed: false,
+      update: preview,
+      item: oldItem,
+    };
+  }
+
+  const update = applySafeMetadataUpdate(itemJSON, oldItem);
+  await oldItem.saveTx();
+  return {
+    confirmed: true,
+    update,
+    item: oldItem,
+  };
+}
+
+function normalizeTranslatedMetadataItem(newItem: any) {
+  if (!newItem) {
+    throw new Error("No translated metadata found");
+  }
+
+  const itemJSON =
+    typeof newItem.toJSON === "function" ? newItem.toJSON() : newItem;
+
+  if (!itemJSON || typeof itemJSON !== "object") {
+    throw new Error("Translated metadata is not a valid item object");
+  }
+
+  return itemJSON;
+}
+
+function confirmMetadataUpdate(preview: SafeMetadataUpdateResult) {
+  const message = formatMetadataUpdatePreview(preview);
+  const promptService = (globalThis as unknown as { Services?: any }).Services
+    ?.prompt;
+
+  if (promptService?.confirm) {
+    return promptService.confirm(
+      window,
+      getString("metadata-preview-title"),
+      message,
+    );
+  }
+
+  if (typeof window.confirm === "function") {
+    return window.confirm(
+      `${getString("metadata-preview-title")}\n\n${message}`,
+    );
+  }
+
+  return false;
+}
+
+function formatPreviewValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry && typeof entry === "object") {
+          return (
+            (entry as any).tag || (entry as any).lastName || JSON.stringify(entry)
+          );
+        }
+        return String(entry);
+      })
+      .join(", ");
+  }
+
+  return cleanText(value) || "(empty)";
 }
 
 function applySafeItemType(
   newItem: any,
   oldItem: Zotero.Item,
   result: SafeMetadataUpdateResult,
+  options: ApplySafeMetadataUpdateOptions,
 ) {
   if (!newItem.itemType) {
     return;
@@ -491,7 +629,9 @@ function applySafeItemType(
   }
 
   const oldItemTypeID = oldItem.itemTypeID;
-  oldItem.setType(itemTypeID);
+  if (!options.dryRun) {
+    oldItem.setType(itemTypeID);
+  }
   result.applied.push({
     field: "itemType",
     oldValue: oldItemTypeID,
@@ -503,9 +643,12 @@ function applySafeCreators(
   newItem: any,
   oldItem: Zotero.Item,
   result: SafeMetadataUpdateResult,
+  options: ApplySafeMetadataUpdateOptions,
 ) {
   if (Array.isArray(newItem.creators) && newItem.creators.length) {
-    oldItem.setCreators(newItem.creators);
+    if (!options.dryRun) {
+      oldItem.setCreators(newItem.creators);
+    }
     result.applied.push({
       field: "creators",
       oldValue: undefined,
@@ -523,6 +666,7 @@ function applySafeFields(
   newItem: any,
   oldItem: Zotero.Item,
   result: SafeMetadataUpdateResult,
+  options: ApplySafeMetadataUpdateOptions,
 ) {
   const fields = [
     "title",
@@ -550,7 +694,12 @@ function applySafeFields(
       continue;
     }
 
-    if (!Zotero.ItemFields.isValidForType(fieldID, oldItem.itemTypeID)) {
+    if (
+      !Zotero.ItemFields.isValidForType(
+        fieldID,
+        getEffectiveItemTypeID(newItem, oldItem, options),
+      )
+    ) {
       continue;
     }
 
@@ -564,13 +713,27 @@ function applySafeFields(
       continue;
     }
 
-    oldItem.setField(field, safeValue.value);
+    if (!options.dryRun) {
+      oldItem.setField(field, safeValue.value);
+    }
     result.applied.push({
       field,
       oldValue,
       newValue: safeValue.value,
     });
   }
+}
+
+function getEffectiveItemTypeID(
+  newItem: any,
+  oldItem: Zotero.Item,
+  options: ApplySafeMetadataUpdateOptions,
+) {
+  if (!options.dryRun || !newItem.itemType || newItem.itemType === "webpage") {
+    return oldItem.itemTypeID;
+  }
+
+  return Zotero.ItemTypes.getID(newItem.itemType) || oldItem.itemTypeID;
 }
 
 function getSafeFieldValue(field: string, newValue: unknown, oldValue: unknown) {
@@ -660,6 +823,7 @@ function applySafeTags(
   newItem: any,
   oldItem: Zotero.Item,
   result: SafeMetadataUpdateResult,
+  options: ApplySafeMetadataUpdateOptions,
 ) {
   if (!Array.isArray(newItem.tags)) {
     return;
@@ -684,7 +848,9 @@ function applySafeTags(
       type: 1,
     }));
 
-  oldItem.setTags([...manualTags, ...newAutomaticTags]);
+  if (!options.dryRun) {
+    oldItem.setTags([...manualTags, ...newAutomaticTags]);
+  }
   result.applied.push({
     field: "tags",
     oldValue: oldTags,

@@ -20,9 +20,12 @@ try {
   });
 
   const {
+    applyMetadataUpdateWithConfirmation,
     applySafeMetadataUpdate,
+    buildMetadataUpdatePreview,
     buildFallbackDoubanItem,
     extractDoubanTitle,
+    formatMetadataUpdatePreview,
     isNoTitleSpecifiedError,
     lowersDatePrecision,
     mergeExtra,
@@ -158,6 +161,84 @@ try {
     true,
   );
 
+  const previewItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "Norwegian Wood",
+      date: "1987-09-04",
+      publisher: "Existing Publisher",
+      ISBN: "",
+      abstractNote: "",
+      extra: "User Note: keep me",
+    },
+    tags: [{ tag: "manual tag", type: 0 }],
+  });
+  const previewResult = buildMetadataUpdatePreview(
+    {
+      title: "Norwegian Wood",
+      creators: [{ creatorType: "author", lastName: "Haruki Murakami" }],
+      date: "1987",
+      publisher: "Vintage",
+      ISBN: "9780099448822",
+      abstractNote: "Preview abstract",
+      extra: "ISBN: 9780099448822",
+      tags: [{ tag: "translated tag" }],
+    },
+    previewItem,
+  );
+  const previewText = formatMetadataUpdatePreview(previewResult);
+
+  assert.equal(previewItem.getField("publisher"), "Existing Publisher");
+  assert.equal(previewItem.getField("ISBN"), "");
+  assert.equal(previewItem.saveCount, 0);
+  assert.match(previewText, /publisher: Existing Publisher -> Vintage/);
+  assert.match(previewText, /creators: \(empty\) -> Haruki Murakami/);
+  assert.match(previewText, /ISBN: \(empty\) -> 9780099448822/);
+  assert.match(previewText, /date: skipped \(skip lower precision date\)/);
+  assert.match(previewText, /tags: manual tag -> manual tag, translated tag/);
+
+  const cancelItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "Norwegian Wood",
+      publisher: "Existing Publisher",
+    },
+    tags: [],
+  });
+  const cancelResult = await applyMetadataUpdateWithConfirmation(
+    {
+      title: "Norwegian Wood",
+      publisher: "Vintage",
+    },
+    cancelItem,
+    () => false,
+  );
+
+  assert.equal(cancelResult.confirmed, false);
+  assert.equal(cancelItem.getField("publisher"), "Existing Publisher");
+  assert.equal(cancelItem.saveCount, 0);
+
+  const confirmItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "Norwegian Wood",
+      publisher: "Existing Publisher",
+    },
+    tags: [],
+  });
+  const confirmResult = await applyMetadataUpdateWithConfirmation(
+    {
+      title: "Norwegian Wood",
+      publisher: "Vintage",
+    },
+    confirmItem,
+    () => true,
+  );
+
+  assert.equal(confirmResult.confirmed, true);
+  assert.equal(confirmItem.getField("publisher"), "Vintage");
+  assert.equal(confirmItem.saveCount, 1);
+
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
@@ -185,6 +266,7 @@ function createMockItem({ itemTypeID, fields, tags }) {
     itemTypeID,
     fields: { ...fields },
     tags: [...tags],
+    saveCount: 0,
     getField(field) {
       return this.fields[field] || "";
     },
@@ -202,6 +284,9 @@ function createMockItem({ itemTypeID, fields, tags }) {
     },
     setTags(tags) {
       this.tags = tags;
+    },
+    async saveTx() {
+      this.saveCount += 1;
     },
   };
 }

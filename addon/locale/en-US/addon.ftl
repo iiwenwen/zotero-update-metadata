@@ -14,6 +14,10 @@ message-saveItem-success = saveItem success
 message-saveItem-fail = saveItem fail
 message-updateItem-success = updateItem success
 message-updateItem-fail = updateItem fail
+message-updateItem-cancel = updateItem canceled
+message-getMeta-error = get metadata failed
+
+metadata-preview-title = Confirm metadata update
 
 startup-begin = Start loading
 startup-finish = Finish loading

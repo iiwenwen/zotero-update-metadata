@@ -3,6 +3,7 @@ pref-select =
     .value = 模式：
 pref-saveAttachments =
     .label = 保存附件
+pref-confirmBeforeUpdate =
+    .label = 更新现有条目前先确认
 pref-about = 关于
 pref-help = { $name } Build { $version } { $time }
-
