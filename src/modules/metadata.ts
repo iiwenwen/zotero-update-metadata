@@ -211,22 +211,20 @@ export async function getMeta(context: MetadataRunContext = {}) {
       const updateResult = await updateItem(translatedItem, item, context.win);
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
-      if (updateResult.confirmed) {
+      if (updateResult.status === "applied") {
         summary.success += 1;
-      } else {
+      } else if (updateResult.status === "canceled") {
         summary.canceled += 1;
+      } else {
+        recordSkipped(summary, updateResult.reason || NO_SAFE_CHANGES_REASON);
       }
       if (translatedResult.provider !== "douban-url") {
         summary.fallback += 1;
       }
       popWin.changeLine({
-        type: updateResult.confirmed ? "success" : "default",
+        type: updateResult.status === "applied" ? "success" : "default",
         progress: 0,
-        text: `${current}${getString(
-          updateResult.confirmed
-            ? "message-updateItem-success"
-            : "message-updateItem-cancel",
-        )}`,
+        text: `${current}${formatUpdateResultMessage(updateResult)}`,
         idx: 1,
       });
     } catch (err) {
@@ -920,9 +918,13 @@ type ApplySafeMetadataUpdateOptions = {
 
 export type MetadataUpdateResult = {
   confirmed: boolean;
+  status: "applied" | "canceled" | "skipped";
+  reason?: string;
   update: SafeMetadataUpdateResult;
   item: Zotero.Item;
 };
+
+const NO_SAFE_CHANGES_REASON = "no safe metadata changes";
 
 export function shouldConfirmBeforeMetadataUpdate() {
   const value = getPref("confirmBeforeUpdate");
@@ -1000,21 +1002,57 @@ export async function applyMetadataUpdateWithConfirmation(
   const itemJSON = normalizeTranslatedMetadataItem(newItem);
   const preview = buildMetadataUpdatePreview(itemJSON, oldItem);
 
+  if (!preview.applied.length) {
+    return {
+      confirmed: false,
+      status: "skipped",
+      reason: NO_SAFE_CHANGES_REASON,
+      update: preview,
+      item: oldItem,
+    };
+  }
+
   if (!confirmUpdate(preview)) {
     return {
       confirmed: false,
+      status: "canceled",
       update: preview,
       item: oldItem,
     };
   }
 
   const update = applySafeMetadataUpdate(itemJSON, oldItem);
+  if (!update.applied.length) {
+    return {
+      confirmed: false,
+      status: "skipped",
+      reason: NO_SAFE_CHANGES_REASON,
+      update,
+      item: oldItem,
+    };
+  }
+
   await oldItem.saveTx();
   return {
     confirmed: true,
+    status: "applied",
     update,
     item: oldItem,
   };
+}
+
+function formatUpdateResultMessage(result: MetadataUpdateResult) {
+  if (result.status === "applied") {
+    return getString("message-updateItem-success");
+  }
+
+  if (result.status === "canceled") {
+    return getString("message-updateItem-cancel");
+  }
+
+  return `${getString("message-updateItem-skip")}: ${
+    result.reason || NO_SAFE_CHANGES_REASON
+  }`;
 }
 
 function normalizeTranslatedMetadataItem(newItem: any) {
@@ -1118,6 +1156,18 @@ function applySafeCreators(
   options: ApplySafeMetadataUpdateOptions,
 ) {
   if (Array.isArray(newItem.creators) && newItem.creators.length) {
+    const oldCreators =
+      typeof (oldItem as any).getCreators === "function"
+        ? (oldItem as any).getCreators() || []
+        : [];
+    if (JSON.stringify(oldCreators) === JSON.stringify(newItem.creators)) {
+      result.skipped.push({
+        field: "creators",
+        reason: "skip unchanged creators",
+      });
+      return;
+    }
+
     if (!options.dryRun) {
       oldItem.setCreators(newItem.creators);
     }
@@ -1181,6 +1231,14 @@ function applySafeFields(
       result.skipped.push({
         field,
         reason: safeValue.reason,
+      });
+      continue;
+    }
+
+    if (safeValue.value === oldValue) {
+      result.skipped.push({
+        field,
+        reason: "skip unchanged value",
       });
       continue;
     }
@@ -1325,6 +1383,13 @@ function applySafeTags(
       ...tag,
       type: 1,
     }));
+  if (!newAutomaticTags.length) {
+    result.skipped.push({
+      field: "tags",
+      reason: "skip unchanged tags",
+    });
+    return;
+  }
 
   if (!options.dryRun) {
     oldItem.setTags([...manualTags, ...newAutomaticTags]);

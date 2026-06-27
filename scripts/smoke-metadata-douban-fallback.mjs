@@ -228,6 +228,7 @@ try {
   );
 
   assert.equal(cancelResult.confirmed, false);
+  assert.equal(cancelResult.status, "canceled");
   assert.equal(cancelItem.getField("publisher"), "Existing Publisher");
   assert.equal(cancelItem.saveCount, 0);
 
@@ -239,18 +240,53 @@ try {
     },
     tags: [],
   });
+  let confirmCalls = 0;
   const confirmResult = await applyMetadataUpdateWithConfirmation(
     {
       title: "Norwegian Wood",
       publisher: "Vintage",
     },
     confirmItem,
-    () => true,
+    (preview) => {
+      confirmCalls += 1;
+      assert.equal(
+        preview.applied.some((change) => change.field === "publisher"),
+        true,
+      );
+      return true;
+    },
   );
 
   assert.equal(confirmResult.confirmed, true);
+  assert.equal(confirmResult.status, "applied");
+  assert.equal(confirmCalls, 1);
   assert.equal(confirmItem.getField("publisher"), "Vintage");
   assert.equal(confirmItem.saveCount, 1);
+
+  const noChangeItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "Norwegian Wood",
+    },
+    tags: [],
+  });
+  let noChangeConfirmCalls = 0;
+  const noChangeResult = await applyMetadataUpdateWithConfirmation(
+    {
+      title: "Norwegian Wood",
+    },
+    noChangeItem,
+    () => {
+      noChangeConfirmCalls += 1;
+      return true;
+    },
+  );
+
+  assert.equal(noChangeResult.confirmed, false);
+  assert.equal(noChangeResult.status, "skipped");
+  assert.equal(noChangeResult.reason, "no safe metadata changes");
+  assert.equal(noChangeConfirmCalls, 0);
+  assert.equal(noChangeItem.saveCount, 0);
 
   const isbnItem = createMockItem({
     itemTypeID: 1,
