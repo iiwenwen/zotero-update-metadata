@@ -65,6 +65,18 @@ Autonomous Codex work must use the 42COG/RCSW method as part of the execution lo
 - During execution, keep changes scoped to the selected Issue and no more than four core entities; avoid broad scans of historical `.ai/`, `.42cog/`, or `.codex/` records unless the current task requires them.
 - Before completion, verify that the change still satisfies the relevant Real constraints and Cog entity boundaries, then record the run and create a controlled checkpoint commit for tracked task files.
 
+### Codex Watchdog v1
+
+Codex Watchdog is the local heartbeat loop for autonomous work. It is meant to be triggered by Codex Desktop automation, `codex exec`, `launchd`, or another external scheduler; the repository does not install a system timer by itself.
+
+Each watchdog wakeup must:
+
+- Read `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/STATE.md`, `.ai/QUEUE.md`, and the selected CNB Issue before acting.
+- Use `.ai/watchdog.lock` as a single-run guard; if the lock is fresh, stop instead of starting a second run.
+- Process at most one task or one recoverable step per wakeup, with a default time budget of 60 minutes and retry budget of two consecutive failures per task.
+- Output `HEARTBEAT_OK` when no ready task exists, `BLOCKED` when a task is safely skipped, and `NEED_HUMAN_DECISION` for high-risk or low-certainty work.
+- Persist `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` after every pass; `.ai/`, `.42cog/`, and `.codex/` stay local unless a task explicitly makes them versioned.
+
 ## ChangeLog
 
 - 2024-04-09 Release 1.0.0 Initial version
