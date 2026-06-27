@@ -56,6 +56,15 @@ Key directories:
 
 Project skills are exposed through relative symlinks from `.codex/skills/` to `.42plugin/42edu/`.
 
+### Autonomous Agent Alignment
+
+Autonomous Codex work must use the 42COG/RCSW method as part of the execution loop, not only as project background:
+
+- Before planning a task, read the minimal 42COG context that applies to the change: `.42cog/meta/meta.md`, `.42cog/real/real.md`, `.42cog/cog/cog.md`, and only the relevant `spec/` or work documents.
+- In each task context, name the affected 42COG entities, constraints, non-goals, acceptance criteria, risks, and verification path.
+- During execution, keep changes scoped to the selected Issue and no more than four core entities; avoid broad scans of historical `.ai/`, `.42cog/`, or `.codex/` records unless the current task requires them.
+- Before completion, verify that the change still satisfies the relevant Real constraints and Cog entity boundaries, then record the run and create a controlled checkpoint commit for tracked task files.
+
 ## ChangeLog
 
 - 2024-04-09 Release 1.0.0 Initial version
