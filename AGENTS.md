@@ -308,7 +308,7 @@ complexity: SIMPLE / COMPLEX
 Zotero 插件测试分为三档，必须先声明采用哪一档：
 
 1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。默认优先使用这一档。
-2. `isolated Zotero integration`：允许自主启动 Zotero，不需要逐次请求用户确认，并且涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录将运行的命令、profile 路径、测试库数据目录、fixture 条目和预期写入 diff；如果需要向 Zotero 发送调试命令，必须证明该命令绑定到测试实例。
+2. `isolated Zotero integration`：只能在仓库根目录执行精确命令 `npm run start` 启动 Zotero；涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录精确命令 `npm run start`、profile 路径、测试库数据目录、fixture 条目和预期写入 diff。除 `npm run start` 外，不存在 AI 可执行的 Zotero 启动、重启、热重载或调试 URL 命令。
 3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
 
 执行 Zotero 集成测试前，必须先判定当前 Zotero 进程属于哪一类：
@@ -316,7 +316,13 @@ Zotero 插件测试分为三档，必须先声明采用哪一档：
 - `isolated test instance`：进程启动参数包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。
 - `real user instance`：正式 profile、正式 dataDir，或无法证明隔离。
 
-如果已存在 `isolated test instance`，优先使用该实例的热重载或已绑定调试通道继续测试，不要手动启动新的 Zotero。允许使用 `/Applications/Zotero.app` 启动隔离测试，只在没有可用测试实例时使用，且启动命令必须明确包含测试 profile，并确认该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止向 `real user instance` 发送插件测试命令。禁止使用裸 `zotero -url zotero://ztoolkit-debug/...` 触发自动测试，因为该 URL 可能投递到已运行的正式 Zotero 实例；只有能证明 debug URL 绑定到测试实例时才允许使用，否则必须停止并标记 `BLOCKED: isolated debug channel unavailable`。
+Zotero 运行时命令白名单：
+
+- 允许 AI 执行的启动命令：`npm run start`
+- 允许 AI 执行的非启动命令：`npm run build`、`npm test`
+- 禁止 AI 执行：`npm run reload`、`npm run reload:print`、`npm run stop`、`node scripts/reload.mjs`、`node scripts/debug-url.mjs`、`node scripts/stop.mjs`、`/Applications/Zotero.app/Contents/MacOS/zotero`、`open -a Zotero`、`zotero`、`zotero://...`、任何包含 `zotero://ztoolkit-debug` 或 `-url` 的命令
+
+如果已存在 `isolated test instance`，不要执行任何热重载、调试 URL 或 stop 命令；需要重新加载或重启时，只能停止并输出 `NEED_HUMAN_DECISION: Zotero runtime reload/restart requires user action or npm run start from a clean state`。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止向 `real user instance` 发送插件测试命令。
 
 在执行任何可能启动 Zotero 的命令前，必须先检查并记录：
 
