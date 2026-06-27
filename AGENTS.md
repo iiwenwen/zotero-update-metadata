@@ -308,7 +308,7 @@ complexity: SIMPLE / COMPLEX
 Zotero 插件测试分为三档，必须先声明采用哪一档：
 
 1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。默认优先使用这一档。
-2. `isolated Zotero integration`：允许启动 Zotero，但必须同时满足：使用隔离 profile、临时测试库、测试专用 Zotero 应用或明确隔离的可执行路径、不会连接真实用户资料库；执行前必须输出将运行的命令、profile 路径和数据目录，并获得用户确认。
+2. `isolated Zotero integration`：允许启动 Zotero，并且涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：测试专用 Zotero 应用或明确隔离的可执行路径、不会连接真实用户资料库；执行前必须输出将运行的命令、profile 路径、测试库数据目录、fixture 条目和预期写入 diff，并获得用户确认。
 3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
 
 禁止把“带 `-profile` 的 `/Applications/Zotero.app`”自动视为安全测试环境。即使 profile 指向测试目录，只要可执行文件是正式 Zotero.app，也必须先停下确认。
@@ -318,10 +318,10 @@ Zotero 插件测试分为三档，必须先声明采用哪一档：
 - 当前是否已有 Zotero 进程
 - 将使用的 Zotero 可执行路径
 - profile / data directory 是否隔离
-- 测试是否会写入条目、附件、笔记、标签、Extra 或偏好
+- 测试是否会写入条目、附件、笔记、标签、Extra 或偏好；如果会写入，必须说明写入到哪个测试库、写入前后如何检查 diff、如何证明主库未连接且未变更
 - 退出/清理和失败恢复方式
 
-如果无法证明以上隔离条件，允许继续做 `static/unit smoke`，但不得声明插件运行时验证已完成，不得关闭涉及运行时行为的 Issue。
+如果无法证明以上隔离条件，允许继续做 `static/unit smoke`，但不得声明插件运行时验证已完成，不得关闭涉及运行时行为的 Issue。涉及写入确认、附件、笔记、标签、Extra 或偏好持久化的 Issue，不能因为“避免写入”而跳过运行时验证；必须写入隔离测试库，或标记 `BLOCKED: isolated test library unavailable`。
 
 创建 PR 或准备 PR handoff 前，必须先自审。自审至少覆盖：
 
