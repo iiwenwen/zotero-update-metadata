@@ -308,10 +308,10 @@ complexity: SIMPLE / COMPLEX
 Zotero 插件测试分为三档，必须先声明采用哪一档：
 
 1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。默认优先使用这一档。
-2. `isolated Zotero integration`：允许自主启动 Zotero，不需要逐次请求用户确认，并且涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录将运行的命令、profile 路径、测试库数据目录、fixture 条目和预期写入 diff。
+2. `isolated Zotero integration`：允许自主启动 Zotero，不需要逐次请求用户确认，并且涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录将运行的命令、profile 路径、测试库数据目录、fixture 条目和预期写入 diff；如果需要向 Zotero 发送调试命令，必须证明该命令绑定到测试实例。
 3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
 
-允许使用 `/Applications/Zotero.app` 启动隔离测试，只要启动命令明确包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。
+允许使用 `/Applications/Zotero.app` 启动隔离测试，只要启动命令明确包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止使用裸 `zotero -url zotero://ztoolkit-debug/...` 触发自动测试，因为该 URL 可能投递到已运行的正式 Zotero 实例；如果无法证明 debug URL 绑定到测试实例，必须停止并标记 `BLOCKED: isolated debug channel unavailable`。
 
 在执行任何可能启动 Zotero 的命令前，必须先检查并记录：
 
