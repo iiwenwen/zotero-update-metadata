@@ -85,6 +85,8 @@ watchdog/queue mode：
 - 不要把失败伪装成完成
 - 不要因为一个任务卡住而阻塞整个队列
 - 如果任务卡住，记录原因，标记 `BLOCKED`，然后进入下一个任务
+- watchdog/queue mode 完成一个任务后必须进入 NEXT：在时间预算、失败预算和用户指令允许时，重新回到 ORCHESTRATE，继续选择下一个 ready task；只有没有 ready task、预算耗尽、遇到人类决策点或用户要求停止时才结束
+- queue 选题默认采用“先热身、再攻坚”：P0/P1 仍优先于普通任务；同优先级内先选 SIMPLE、低风险、可验证的小任务，再选 COMPLEX，以便 AI 先沉淀同类问题套路
 
 ---
 
