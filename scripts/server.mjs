@@ -1,18 +1,19 @@
 import { main as build, esbuildOptions } from "./build.mjs";
 import { openDevToolScript, reloadScript } from "./scripts.mjs";
+import { runDebugURL } from "./debug-url.mjs";
 import { main as startZotero } from "./start.mjs";
 import { Logger } from "./utils.mjs";
-import cmd from "./zotero-cmd.json" assert { type: "json" };
 import { execSync } from "child_process";
 import chokidar from "chokidar";
+import { createRequire } from "node:module";
 import { context } from "esbuild";
 import { exit } from "process";
 
 process.env.NODE_ENV = "development";
 
-const { zoteroBinPath, profilePath } = cmd.exec;
-
-const startZoteroCmd = `"${zoteroBinPath}" --debugger --purgecaches -profile "${profilePath}"`;
+const require = createRequire(import.meta.url);
+const cmd = require("./zotero-cmd.json");
+const { zoteroBinPath } = cmd.exec;
 
 async function watch() {
   const watcher = chokidar.watch(["src/**", "addon/**"], {
@@ -47,20 +48,12 @@ async function watch() {
 
 function reload() {
   Logger.debug("Reloading...");
-  const url = `zotero://ztoolkit-debug/?run=${encodeURIComponent(
-    reloadScript,
-  )}`;
-  const command = `${startZoteroCmd} -url "${url}"`;
-  execSync(command);
+  runDebugURL(zoteroBinPath, reloadScript);
 }
 
 function openDevTool() {
   Logger.debug("Open dev tools...");
-  const url = `zotero://ztoolkit-debug/?run=${encodeURIComponent(
-    openDevToolScript,
-  )}`;
-  const command = `${startZoteroCmd} -url "${url}"`;
-  execSync(command);
+  runDebugURL(zoteroBinPath, openDevToolScript);
 }
 
 async function main() {

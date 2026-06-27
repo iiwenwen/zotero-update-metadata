@@ -1,12 +1,14 @@
-import details from "../package.json" assert { type: "json" };
 import { Logger } from "./utils.mjs";
-import cmd from "./zotero-cmd.json" assert { type: "json" };
 import { spawn } from "child_process";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import { clearFolder } from "./utils.mjs";
+import { createRequire } from "node:module";
 import path from "path";
 import { exit } from "process";
 
+const require = createRequire(import.meta.url);
+const details = require("../package.json");
+const cmd = require("./zotero-cmd.json");
 const { addonID } = details.config;
 const { zoteroBinPath, profilePath, dataDir } = cmd.exec;
 

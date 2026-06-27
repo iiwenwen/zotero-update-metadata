@@ -15,6 +15,8 @@
   "scripts": {
     "start": "node scripts/server.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs production",
+    "reload": "node scripts/reload.mjs",
+    "reload:print": "node scripts/reload.mjs --print",
     "stop": "node scripts/stop.mjs",
     "lint": "prettier --write . && eslint . --ext .ts --fix",
     "test": "node scripts/smoke-metadata-douban-fallback.mjs",

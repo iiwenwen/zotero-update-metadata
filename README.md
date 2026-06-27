@@ -41,7 +41,19 @@ Use this code under the AGPL. No warranty is provided. Follow the laws in your r
 
 ## Development
 
-Maintainer-specific agent workflow instructions are kept out of this user-facing README. See `AGENTS.md` for Codex and automation guidance.
+Run `npm run start` to build the add-on, start Zotero with the configured
+development profile, and watch `src/` plus `addon/` changes. While Zotero is
+already running, `npm run reload` sends only the ztoolkit debug reload URL to
+the current Zotero process, so most source and locale edits do not need a full
+Zotero restart.
+
+Use `npm run reload:print` to inspect the reload command without launching
+Zotero. A full restart is still recommended after changing `addon/manifest.json`,
+bootstrap startup/shutdown behavior, dependency versions, or the configured
+profile/data directory.
+
+Maintainer-specific agent workflow instructions are kept out of this
+user-facing README. See `AGENTS.md` for Codex and automation guidance.
 
 ## ChangeLog
 

@@ -39,6 +39,17 @@
 
 在 AGPL 下使用此代码. 不提供任何保证. 遵守你所在地区的法律！
 
+## 开发
+
+运行 `npm run start` 会构建插件、用配置的开发 profile 启动 Zotero，并监听
+`src/` 与 `addon/` 变化。Zotero 已经运行时，`npm run reload` 只向当前 Zotero
+进程发送 ztoolkit debug reload URL，因此大多数源码和 locale 修改不需要完整重启
+Zotero。
+
+可用 `npm run reload:print` 查看 reload 命令而不启动 Zotero。修改
+`addon/manifest.json`、bootstrap 启停逻辑、依赖版本，或切换 profile/data 目录后，
+仍建议完整重启 Zotero。
+
 ## ChangeLog
 
 - 2024-04-09 发布1.0.0 初始版本

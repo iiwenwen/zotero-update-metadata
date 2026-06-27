@@ -1,4 +1,7 @@
-import details from "../package.json" assert { type: "json" };
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const details = require("../package.json");
 
 const { addonID, addonName } = details.config;
 const { version } = details;

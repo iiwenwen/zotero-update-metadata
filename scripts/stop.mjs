@@ -1,8 +1,10 @@
 import { Logger, isRunning } from "./utils.mjs";
-import cmd from "./zotero-cmd.json" assert { type: "json" };
 import { execSync } from "child_process";
+import { createRequire } from "node:module";
 import process from "process";
 
+const require = createRequire(import.meta.url);
+const cmd = require("./zotero-cmd.json");
 const { killZoteroWindows, killZoteroUnix } = cmd;
 
 isRunning("zotero", (status) => {
