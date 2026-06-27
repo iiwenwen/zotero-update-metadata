@@ -39,44 +39,9 @@ This project allows you to update or save metadata for entries in Zotero directl
 
 Use this code under the AGPL. No warranty is provided. Follow the laws in your region!
 
-## 42COG / Codex Workflow
+## Development
 
-This project is initialized for Codex with the 42COG RCSW workflow:
-
-```text
-Init -> Real -> Cog -> Product Requirements -> User Story -> UX/UI Design -> System Architecture -> Data / Domain -> Coding -> QA -> Work / Iteration
-```
-
-Key directories:
-
-- `.42cog/`: project cognition, constraints, and iteration records
-- `spec/`: product, design, and development specifications
-- `src/`: Zotero plugin source code
-- `.codex/`: Codex project skills and local agent notes
-
-Project skills are exposed through relative symlinks from `.codex/skills/` to `.42plugin/42edu/`.
-
-### Autonomous Agent Alignment
-
-Autonomous Codex work must use the 42COG/RCSW method as part of the execution loop, not only as project background:
-
-- Before planning a task, read the minimal 42COG context that applies to the change: `.42cog/meta/meta.md`, `.42cog/real/real.md`, `.42cog/cog/cog.md`, and only the relevant `spec/` or work documents.
-- In each task context, name the affected 42COG entities, constraints, non-goals, acceptance criteria, risks, and verification path.
-- Before planning, run a Meta-Reflection Gate: confirm the problem is real, consider whether it can be narrowed or redefined, keep the task within four core entities, look for mature existing solutions, and check whether the new goal could break old behavior.
-- During execution, keep changes scoped to the selected Issue and no more than four core entities; avoid broad scans of historical `.ai/`, `.42cog/`, or `.codex/` records unless the current task requires them.
-- Before completion, verify that the change still satisfies the relevant Real constraints and Cog entity boundaries, then record the run and create a controlled checkpoint commit for tracked task files.
-
-### Codex Watchdog v1
-
-Codex Watchdog is the local heartbeat loop for autonomous work. It is meant to be triggered by Codex Desktop automation, `codex exec`, `launchd`, or another external scheduler; the repository does not install a system timer by itself.
-
-Each watchdog wakeup must:
-
-- Read `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/STATE.md`, `.ai/QUEUE.md`, and the selected CNB Issue before acting.
-- Use `.ai/watchdog.lock` as a single-run guard; if the lock is fresh, stop instead of starting a second run.
-- Process at most one task or one recoverable step per wakeup, with a default time budget of 60 minutes and retry budget of two consecutive failures per task.
-- Output `HEARTBEAT_OK` when no ready task exists, `BLOCKED` when a task is safely skipped, and `NEED_HUMAN_DECISION` for high-risk or low-certainty work.
-- Persist `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` after every pass; `.ai/`, `.42cog/`, and `.codex/` stay local unless a task explicitly makes them versioned.
+Maintainer-specific agent workflow instructions are kept out of this user-facing README. See `AGENTS.md` for Codex and automation guidance.
 
 ## ChangeLog
 
