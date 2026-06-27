@@ -14,13 +14,30 @@
 
 ## 1. Mandatory Reading Order
 
-每轮开始必须按顺序读取：
+先按用户请求分类。
+
+`repo-change/code task` 包括：
+
+- 代码 bug、需求、新功能、测试、CI、build、release、配置
+- 仓库内文档、流程文件、提示词文件的修改
+- 任何会产生 staged diff 或需要 git checkpoint 的任务
+
+`no-change review/advice task` 包括：
+
+- 纯咨询、解释、比较、一次性判断
+- 只输出意见的代码审查、流程审计、提示词评审
+- 外部资料或模型意见汇总
+- 不修改仓库、不产生可提交产物的任务
+
+只有 `repo-change/code task` 和 watchdog/queue mode 必须按顺序读取：
 
 1. `AGENTS.md`
 2. `.ai/WORKFLOW.md`
 3. `.ai/STATE.md`
 4. `.ai/QUEUE.md`
 5. 当前任务 Issue 或 `.ai/tasks/<task-id>.md`
+
+`no-change review/advice task` 只读取用户提供或明确要求的上下文；除非用户要求基于仓库真实状态判断，否则不读取 `.ai/STATE.md`、`.ai/QUEUE.md`，不进入 BOOT、QUEUE 或 commit gate。
 
 禁止启动时主动遍历整个仓库文档。
 
@@ -34,7 +51,8 @@
 
 你必须遵守：
 
-- 用户在对话中直接提出新的 bug、需求或任务时，必须先创建 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
+- `repo-change/code task` 必须先创建或绑定 CNB Issue；没有远端 Issue 编号，不得进入 EXECUTE
+- `no-change review/advice task` 禁止为了形式完整而创建 CNB Issue、更新队列或制造 git commit
 - 一次只处理一个任务
 - 一次只处理不超过 4 个核心实体
 - 不要顺手修无关问题
@@ -49,7 +67,7 @@
 
 ## 3. Reality Sync Rule
 
-动手前必须确认真实状态。
+`repo-change/code task` 动手前必须确认真实状态。`no-change review/advice task` 可声明 `Repository state not modified; git gates not applicable`，不因 dirty workspace 阻塞。
 
 至少检查：
 
@@ -113,7 +131,7 @@ NEED_HUMAN_DECISION: <reason>
 
 ## 6. Completion Rule
 
-只有同时满足以下条件，才能标记任务完成：
+`repo-change/code task` 只有同时满足以下条件，才能标记任务完成：
 
 1. 当前任务目标实现
 2. Non-goals 没有被破坏
@@ -125,6 +143,12 @@ NEED_HUMAN_DECISION: <reason>
 8. 必要经验已沉淀到 `.ai/memory/`
 9. 本任务范围内的修改已完成一次受控 git commit，并在提交说明中写明任务、具体变更和验证结果
 10. CNB Issue 只有在 1-9 全部满足后才能关闭；功能测试不完整时不得关闭任务
+
+`no-change review/advice task` 不要求 CNB Issue、`.ai/STATE.md`、`.ai/runs/` 或 git commit。最终回复必须明确未修改仓库：
+
+```text
+Commit: N/A — no repository changes
+```
 
 完成后最终回复必须以状态信号开头，并附带完成摘要；禁止只输出裸 `PASS`。
 
@@ -186,7 +210,7 @@ HEARTBEAT_OK
 
 ## 8. Execution Gates
 
-每个任务进入 EXECUTE 前，必须先判断任务复杂度：
+`repo-change/code task` 进入 EXECUTE 前，必须先判断任务复杂度：
 
 ```text
 complexity: SIMPLE / COMPLEX
@@ -200,7 +224,13 @@ complexity: SIMPLE / COMPLEX
 - 不涉及用户数据、安全边界、权限、发布、外部同步或真实 Zotero 库写入
 - 可以用直接命令、静态检查或等价端到端验证确认完成
 
-`SIMPLE` 任务可以在完成 BOOT、ROUTE 和 META_REFLECT 后直接执行，但仍必须记录最小意图、验证方式、Files In Scope 和 Commit Scope。
+`SIMPLE` 任务可以在完成 BOOT、ROUTE 和 META_REFLECT 后直接执行，但只需记录：
+
+- Minimal Intent
+- Files In Scope
+- Verification
+- Commit Scope
+- Rollback
 
 任何不满足 `SIMPLE` 条件的任务都是 `COMPLEX`。`COMPLEX` 任务必须先写 PLAN，且 PLAN 必须包含元反思结论：
 
@@ -232,7 +262,16 @@ complexity: SIMPLE / COMPLEX
 
 ## 9. Defense & Integrity Gate
 
-每个任务进入 EXECUTE 前，必须同时设计成功路径和失败路径。
+Defense & Integrity 按风险分级启用。
+
+`SIMPLE` 任务只需轻量 guard：
+
+- intent：本轮要做的最小改动
+- files：允许修改和提交的文件
+- verification：如何证明完成
+- rollback：失败时如何撤回本轮改动
+
+`COMPLEX` 或 `HIGH risk` 任务进入 EXECUTE 前，必须同时设计成功路径和失败路径。
 
 PLAN 必须记录：
 
@@ -257,7 +296,13 @@ PLAN 必须记录：
 
 ## 11. Git Checkpoint Rule
 
-每完成一个任务，必须创建一次 git checkpoint commit。
+每完成一个 `repo-change/code task`，必须创建一次 git checkpoint commit。
+
+`no-change review/advice task` 禁止 fake commit；最终输出使用：
+
+```text
+Commit: N/A — no repository changes
+```
 
 允许自动提交的前提：
 
