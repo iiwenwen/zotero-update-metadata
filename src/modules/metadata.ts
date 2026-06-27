@@ -13,6 +13,38 @@ export function isNoTitleSpecifiedError(err: unknown) {
   return /no title specified/i.test(getErrorMessage(err));
 }
 
+type MetadataProviderInput = {
+  url?: string;
+  oldItem?: Zotero.Item;
+};
+
+type MetadataProvider = {
+  name: string;
+  canTranslate: (input: MetadataProviderInput) => boolean;
+  translate: (input: MetadataProviderInput) => Promise<any[]>;
+};
+
+export type MetadataProviderAttempt = {
+  provider: string;
+  ok: boolean;
+  error?: string;
+};
+
+export type MetadataProviderResult = {
+  item: any;
+  provider: string;
+  attempts: MetadataProviderAttempt[];
+};
+
+export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
+  const value = item?.getField("ISBN");
+  const text = cleanText(value).replace(/[^\dXx]/g, "");
+  if (/^\d{9}[\dXx]$/.test(text) || /^\d{13}$/.test(text)) {
+    return text.toUpperCase();
+  }
+  return "";
+}
+
 export function buildFallbackDoubanItem(doc: Document, url: string) {
   const title = extractDoubanTitle(doc);
   if (!title) {
@@ -98,7 +130,8 @@ export async function getMeta() {
         throw new Error("Unsupported or missing Douban URL");
       }
 
-      const translatedItem = await translateURL(url);
+      const translatedResult = await translateMetadataForItem(url, item);
+      const translatedItem = translatedResult.item;
       if (!translatedItem) {
         throw new Error("No translated metadata found");
       }
@@ -167,7 +200,7 @@ function getSettings(): {
   return settings;
 }
 
-async function translateDocument(doc: Document, url: string) {
+async function translateDoubanDocument(doc: Document, url: string) {
   const translate = new Zotero.Translate.Web();
   translate.setDocument(doc);
   const translators = await translate.getTranslators();
@@ -249,12 +282,121 @@ async function _translateURLNow(url: string) {
     throw new Error("Unable to load metadata URL");
   }
 
-  const newItems = await translateDocument(doc, url);
+  const newItems = await translateDoubanDocument(doc, url);
   if (!newItems.length) {
     throw new Error("Zotero translator returned no metadata items");
   }
 
   return newItems[0];
+}
+
+async function translateDoubanURLProvider(input: MetadataProviderInput) {
+  if (!input.url) {
+    throw new Error("Douban provider requires a URL");
+  }
+  return [await translateURL(input.url)];
+}
+
+async function translateISBNProvider(input: MetadataProviderInput) {
+  const isbn = getItemISBN(input.oldItem);
+  if (!isbn) {
+    throw new Error("ISBN provider requires an existing ISBN");
+  }
+
+  const translate = new Zotero.Translate.Search();
+  translate.setIdentifier(isbn);
+  const translators = await translate.getTranslators();
+
+  if (!translators.length) {
+    throw new Error(`No Zotero search translator found for ISBN ${isbn}`);
+  }
+
+  ztoolkit.log(
+    `Matched ISBN translators: ${translators
+      .map((translator: any) => translator.label || translator.translatorID)
+      .join(", ")}`,
+  );
+
+  translate.setTranslator(translators[0]);
+
+  const translatedItems = await translate.translate(getSettings());
+
+  if (!Array.isArray(translatedItems) || !translatedItems.length) {
+    throw new Error(`ISBN fallback returned no metadata for ${isbn}`);
+  }
+
+  return translatedItems.map((item: any) =>
+    typeof item?.toJSON === "function" ? item.toJSON() : item,
+  );
+}
+
+function createMetadataProviders(): MetadataProvider[] {
+  return [
+    {
+      name: "douban-url",
+      canTranslate: (input) => isSupportedMetadataURL(input.url),
+      translate: translateDoubanURLProvider,
+    },
+    {
+      name: "isbn",
+      canTranslate: (input) => Boolean(getItemISBN(input.oldItem)),
+      translate: translateISBNProvider,
+    },
+  ];
+}
+
+export async function translateWithMetadataProviders(
+  input: MetadataProviderInput,
+  providers: MetadataProvider[],
+): Promise<MetadataProviderResult> {
+  const attempts: MetadataProviderAttempt[] = [];
+
+  for (const provider of providers) {
+    if (!provider.canTranslate(input)) {
+      continue;
+    }
+
+    try {
+      const items = await provider.translate(input);
+      if (!items.length) {
+        throw new Error(`${provider.name} returned no metadata`);
+      }
+      attempts.push({ provider: provider.name, ok: true });
+      return {
+        item: items[0],
+        provider: provider.name,
+        attempts,
+      };
+    } catch (err) {
+      attempts.push({
+        provider: provider.name,
+        ok: false,
+        error: getErrorMessage(err),
+      });
+    }
+  }
+
+  throw new Error(formatProviderFailure(attempts));
+}
+
+async function translateMetadataForItem(url: string, oldItem: Zotero.Item) {
+  return translateWithMetadataProviders(
+    {
+      url,
+      oldItem,
+    },
+    createMetadataProviders(),
+  );
+}
+
+function formatProviderFailure(attempts: MetadataProviderAttempt[]) {
+  if (!attempts.length) {
+    return "No metadata provider can handle this item";
+  }
+
+  return `Metadata providers failed: ${attempts
+    .map((attempt) => `${attempt.provider}: ${attempt.error || "failed"}`)
+    .join("; ")}`;
 }
 
 function getErrorMessage(err: unknown) {

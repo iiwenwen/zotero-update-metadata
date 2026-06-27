@@ -26,9 +26,11 @@ try {
     buildFallbackDoubanItem,
     extractDoubanTitle,
     formatMetadataUpdatePreview,
+    getItemISBN,
     isNoTitleSpecifiedError,
     lowersDatePrecision,
     mergeExtra,
+    translateWithMetadataProviders,
   } = require(outfile);
 
   const documentWithMeta = createMockDocument({
@@ -238,6 +240,100 @@ try {
   assert.equal(confirmResult.confirmed, true);
   assert.equal(confirmItem.getField("publisher"), "Vintage");
   assert.equal(confirmItem.saveCount, 1);
+
+  const isbnItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      ISBN: "978-0-099-44882-2",
+    },
+    tags: [],
+  });
+
+  assert.equal(getItemISBN(isbnItem), "9780099448822");
+
+  const doubanProviderResult = await translateWithMetadataProviders(
+    {
+      url: "https://book.douban.com/subject/1355643/",
+      oldItem: isbnItem,
+    },
+    [
+      {
+        name: "douban-url",
+        canTranslate: () => true,
+        translate: async () => [{ title: "Douban Result" }],
+      },
+      {
+        name: "isbn",
+        canTranslate: () => true,
+        translate: async () => [{ title: "ISBN Result" }],
+      },
+    ],
+  );
+
+  assert.equal(doubanProviderResult.provider, "douban-url");
+  assert.deepEqual(doubanProviderResult.item, { title: "Douban Result" });
+  assert.deepEqual(doubanProviderResult.attempts, [
+    { provider: "douban-url", ok: true },
+  ]);
+
+  const isbnFallbackResult = await translateWithMetadataProviders(
+    {
+      url: "https://book.douban.com/subject/1355643/",
+      oldItem: isbnItem,
+    },
+    [
+      {
+        name: "douban-url",
+        canTranslate: () => true,
+        translate: async () => {
+          throw new Error("URL translator failed");
+        },
+      },
+      {
+        name: "isbn",
+        canTranslate: (input) => Boolean(getItemISBN(input.oldItem)),
+        translate: async () => [{ title: "ISBN Result" }],
+      },
+    ],
+  );
+
+  assert.equal(isbnFallbackResult.provider, "isbn");
+  assert.deepEqual(isbnFallbackResult.item, { title: "ISBN Result" });
+  assert.deepEqual(isbnFallbackResult.attempts, [
+    {
+      provider: "douban-url",
+      ok: false,
+      error: "URL translator failed",
+    },
+    { provider: "isbn", ok: true },
+  ]);
+
+  await assert.rejects(
+    () =>
+      translateWithMetadataProviders(
+        {
+          url: "https://book.douban.com/subject/1355643/",
+          oldItem: isbnItem,
+        },
+        [
+          {
+            name: "douban-url",
+            canTranslate: () => true,
+            translate: async () => {
+              throw new Error("URL translator failed");
+            },
+          },
+          {
+            name: "isbn",
+            canTranslate: (input) => Boolean(getItemISBN(input.oldItem)),
+            translate: async () => {
+              throw new Error("ISBN lookup failed");
+            },
+          },
+        ],
+      ),
+    /Metadata providers failed: douban-url: URL translator failed; isbn: ISBN lookup failed/,
+  );
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
