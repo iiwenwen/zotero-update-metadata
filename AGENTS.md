@@ -443,16 +443,15 @@ PLAN 必须记录：
 
 ## 11. Sub-Agent Review Separation
 
-代码执行和 review 检查必须尽量分离。
+Sub-agent review 主要用于代码审查、运行时行为审查和高风险变更审查。AI 自主流程、提示词或本机工作态维护默认不强制使用 sub-agent；除非用户明确要求，或该流程修改会直接影响代码执行安全、发布、权限、真实数据或不可逆操作。
 
 适用范围：
 
 - 所有 `COMPLEX` 或 `HIGH risk` 的 code task
 - 插件功能、用户可见行为、数据安全、备份/恢复、发布、权限、外部同步、真实 Zotero 数据边界相关任务
-- watchdog、queue、lock、NEXT、PERSIST、Git checkpoint、Issue closure 等自主流程任务
-- 修改 `AGENTS.md`、`.ai/WORKFLOW.md`、`.ai/prompts/` 中执行门禁、安全边界、review、状态持久化或提交规则的 `agent-process-maintenance task`
+- watchdog、queue、lock、NEXT、PERSIST、Git checkpoint、Issue closure 等会影响代码执行、任务状态或远端任务状态的 repo-change 自动化任务
 - 创建 PR、准备 handoff 或关闭远端 Issue 前仍有行为风险的任务
-- focused self-review 发现 P0/P1/P2 后，修复完成必须再交给 reviewer 复审
+- code task 的 focused self-review 发现 P0/P1/P2 后，修复完成必须再交给 reviewer 复审
 
 执行规则：
 
@@ -467,8 +466,9 @@ PLAN 必须记录：
 
 - `SIMPLE` 且低风险的非代码或文档任务：允许 focused self-review
 - `SIMPLE` 代码任务：至少做 focused self-review；如果涉及用户可见行为、插件运行路径或回归风险，必须请求 reviewer sub-agent
+- `agent-process-maintenance task`：默认 focused self-review；如果用户明确要求使用 sub-agent，或该变更直接改变代码执行安全、发布、权限、真实数据或不可逆操作边界，才请求 reviewer sub-agent
 - 纯格式、拼写、注释、低风险说明文案：允许 focused self-review，但必须记录 review 类型
-- `COMPLEX` 或 `HIGH risk` 任务：必须请求 reviewer sub-agent；如果 sub-agent 不可用，记录 `reviewer_unavailable`，并按风险输出 `NEED_HUMAN_DECISION` 或 `BLOCKED`
+- `COMPLEX` 或 `HIGH risk` 的 code / runtime / data-safety 任务：必须请求 reviewer sub-agent；如果 sub-agent 不可用，记录 `reviewer_unavailable`，并按风险输出 `NEED_HUMAN_DECISION` 或 `BLOCKED`
 
 完成门禁：
 
