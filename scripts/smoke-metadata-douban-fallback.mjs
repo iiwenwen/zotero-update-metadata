@@ -22,14 +22,18 @@ try {
   const {
     applyMetadataUpdateWithConfirmation,
     applySafeMetadataUpdate,
+    buildAttachmentImportOptions,
     buildMetadataUpdatePreview,
     buildFallbackDoubanItem,
     extractDoubanTitle,
+    formatBatchUpdateSummary,
     formatMetadataUpdatePreview,
     getItemISBN,
     isNoTitleSpecifiedError,
     lowersDatePrecision,
     mergeExtra,
+    normalizeAttachmentSaveStrategy,
+    shouldTryAttachmentSave,
     translateWithMetadataProviders,
   } = require(outfile);
 
@@ -100,6 +104,9 @@ try {
       isValidForType() {
         return true;
       },
+    },
+    Libraries: {
+      userLibraryID: 1,
     },
   };
 
@@ -335,6 +342,95 @@ try {
     /Metadata providers failed: douban-url: URL translator failed; isbn: ISBN lookup failed/,
   );
 
+  assert.equal(
+    formatBatchUpdateSummary({
+      success: 2,
+      failed: 1,
+      skipped: 1,
+      canceled: 1,
+      fallback: 1,
+      reasons: {
+        "missing URL": 1,
+        "translator failed": 1,
+      },
+    }),
+    "Summary: success 2, failed 1, skipped 1, canceled 1, fallback 1, reasons: missing URL x1; translator failed x1",
+  );
+
+  assert.equal(normalizeAttachmentSaveStrategy("always"), "always");
+  assert.equal(normalizeAttachmentSaveStrategy("bad-value"), "none");
+
+  const itemWithoutAttachments = createMockItem({
+    itemTypeID: 1,
+    fields: {},
+    tags: [],
+    attachments: [],
+  });
+  const itemWithAttachments = createMockItem({
+    itemTypeID: 1,
+    fields: {},
+    tags: [],
+    attachments: [10],
+  });
+  const translatedWithAttachment = {
+    title: "Norwegian Wood",
+    creators: [{ lastName: "Murakami" }],
+    date: "1987-09-04",
+    attachments: [
+      {
+        url: "https://example.test/fulltext.pdf",
+        mimeType: "application/pdf",
+        title: "Full Text",
+      },
+    ],
+  };
+
+  assert.equal(
+    shouldTryAttachmentSave(
+      translatedWithAttachment,
+      itemWithoutAttachments,
+      "missing",
+    ),
+    true,
+  );
+  assert.equal(
+    shouldTryAttachmentSave(translatedWithAttachment, itemWithAttachments, "missing"),
+    false,
+  );
+  assert.equal(
+    shouldTryAttachmentSave(translatedWithAttachment, itemWithAttachments, "always"),
+    true,
+  );
+
+  assert.deepEqual(
+    buildAttachmentImportOptions(
+      {
+        ...translatedWithAttachment,
+        attachments: [{ mimeType: "application/pdf", title: "Full Text" }],
+      },
+      itemWithoutAttachments,
+    ),
+    {
+      ok: false,
+      reason: "missing attachment URL",
+    },
+  );
+
+  assert.deepEqual(
+    buildAttachmentImportOptions(translatedWithAttachment, itemWithoutAttachments),
+    {
+      ok: true,
+      options: {
+        url: "https://example.test/fulltext.pdf",
+        contentType: "application/pdf",
+        title: "Full Text",
+        parentItemID: itemWithoutAttachments.id,
+        libraryID: itemWithoutAttachments.libraryID,
+        fileBaseName: "Murakami - 1987 - Norwegian Wood",
+      },
+    },
+  );
+
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
@@ -357,11 +453,14 @@ function createMockDocument({ title, selectors }) {
   };
 }
 
-function createMockItem({ itemTypeID, fields, tags }) {
+function createMockItem({ itemTypeID, fields, tags, attachments = [] }) {
   return {
+    id: 100,
+    libraryID: 1,
     itemTypeID,
     fields: { ...fields },
     tags: [...tags],
+    attachments: [...attachments],
     saveCount: 0,
     getField(field) {
       return this.fields[field] || "";
@@ -380,6 +479,12 @@ function createMockItem({ itemTypeID, fields, tags }) {
     },
     setTags(tags) {
       this.tags = tags;
+    },
+    getAttachments() {
+      return [...this.attachments];
+    },
+    getNotes() {
+      return [];
     },
     async saveTx() {
       this.saveCount += 1;

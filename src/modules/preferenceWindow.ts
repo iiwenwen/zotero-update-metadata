@@ -79,6 +79,57 @@ function bindPrefEvents() {
     },
     doc.querySelector(`#${makeId("select-schema")}`) as HTMLElement,
   );
+
+  ztoolkit.UI.replaceElement(
+    {
+      tag: "menulist",
+      attributes: {
+        value: (getPref("attachmentSaveStrategy") as string) || "missing",
+        native: "true",
+      },
+      listeners: [
+        {
+          type: "command",
+          listener: (e: Event) => {
+            if (e.target) {
+              const target = e.target as HTMLInputElement;
+              setPref("attachmentSaveStrategy", target.value);
+              ztoolkit.log("attachmentSaveStrategy", target.value);
+            }
+          },
+        },
+      ],
+      children: [
+        {
+          tag: "menupopup",
+          children: [
+            {
+              tag: "menuitem",
+              attributes: {
+                label: getString("attachmentStrategy-none"),
+                value: "none",
+              },
+            },
+            {
+              tag: "menuitem",
+              attributes: {
+                label: getString("attachmentStrategy-missing"),
+                value: "missing",
+              },
+            },
+            {
+              tag: "menuitem",
+              attributes: {
+                label: getString("attachmentStrategy-always"),
+                value: "always",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    doc.querySelector(`#${makeId("attachment-strategy")}`) as HTMLElement,
+  );
 }
 // function disablePrefs() {
 //   const state = getPref("saveAttachments");

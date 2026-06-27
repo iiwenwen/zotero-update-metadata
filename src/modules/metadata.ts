@@ -36,6 +36,17 @@ export type MetadataProviderResult = {
   attempts: MetadataProviderAttempt[];
 };
 
+export type BatchUpdateSummary = {
+  success: number;
+  failed: number;
+  skipped: number;
+  canceled: number;
+  fallback: number;
+  reasons: Record<string, number>;
+};
+
+export type AttachmentSaveStrategy = "none" | "missing" | "always";
+
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
   const value = item?.getField("ISBN");
   const text = cleanText(value).replace(/[^\dXx]/g, "");
@@ -121,13 +132,33 @@ export async function getMeta() {
     return;
   }
 
+  const summary = createBatchUpdateSummary();
+
   for (const [index, item] of items.entries()) {
     const current = `${index + 1}/${items.length}`;
 
     try {
       const url = item.getField("url");
+      if (!cleanText(url)) {
+        recordSkipped(summary, "missing URL");
+        popWin.changeLine({
+          type: "default",
+          progress: 0,
+          text: `${current}${getString("message-updateItem-skip")}: missing URL`,
+          idx: 1,
+        });
+        continue;
+      }
+
       if (!isSupportedMetadataURL(url)) {
-        throw new Error("Unsupported or missing Douban URL");
+        recordSkipped(summary, "unsupported URL");
+        popWin.changeLine({
+          type: "default",
+          progress: 0,
+          text: `${current}${getString("message-updateItem-skip")}: unsupported URL`,
+          idx: 1,
+        });
+        continue;
       }
 
       const translatedResult = await translateMetadataForItem(url, item);
@@ -137,6 +168,10 @@ export async function getMeta() {
       }
 
       if (getPref("schema") === "save") {
+        summary.success += 1;
+        if (translatedResult.provider !== "douban-url") {
+          summary.fallback += 1;
+        }
         popWin.changeLine({
           type: "success",
           progress: 0,
@@ -150,6 +185,14 @@ export async function getMeta() {
       const updateResult = await updateItem(translatedItem, item);
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
+      if (updateResult.confirmed) {
+        summary.success += 1;
+      } else {
+        summary.canceled += 1;
+      }
+      if (translatedResult.provider !== "douban-url") {
+        summary.fallback += 1;
+      }
       popWin.changeLine({
         type: updateResult.confirmed ? "success" : "default",
         progress: 0,
@@ -162,6 +205,8 @@ export async function getMeta() {
       });
     } catch (err) {
       ztoolkit.log(err);
+      summary.failed += 1;
+      recordReason(summary, getErrorMessage(err));
       popWin
         .changeLine({
           type: "error",
@@ -172,6 +217,13 @@ export async function getMeta() {
         .startCloseTimer(3000);
     }
   }
+
+  popWin.changeLine({
+    type: summary.failed ? "default" : "success",
+    progress: 100,
+    text: formatBatchUpdateSummary(summary),
+    idx: 2,
+  });
 }
 
 function getSettings(): {
@@ -399,6 +451,143 @@ function formatProviderFailure(attempts: MetadataProviderAttempt[]) {
     .join("; ")}`;
 }
 
+function createBatchUpdateSummary(): BatchUpdateSummary {
+  return {
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    canceled: 0,
+    fallback: 0,
+    reasons: {},
+  };
+}
+
+function recordSkipped(summary: BatchUpdateSummary, reason: string) {
+  summary.skipped += 1;
+  recordReason(summary, reason);
+}
+
+function recordReason(summary: BatchUpdateSummary, reason: string) {
+  summary.reasons[reason] = (summary.reasons[reason] || 0) + 1;
+}
+
+export function formatBatchUpdateSummary(summary: BatchUpdateSummary) {
+  const reasonText = Object.entries(summary.reasons)
+    .map(([reason, count]) => `${reason} x${count}`)
+    .join("; ");
+
+  return [
+    `Summary: success ${summary.success}`,
+    `failed ${summary.failed}`,
+    `skipped ${summary.skipped}`,
+    `canceled ${summary.canceled}`,
+    `fallback ${summary.fallback}`,
+    reasonText ? `reasons: ${reasonText}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+export function normalizeAttachmentSaveStrategy(
+  value: unknown,
+): AttachmentSaveStrategy {
+  if (value === "missing" || value === "always" || value === "none") {
+    return value;
+  }
+  return "none";
+}
+
+function getAttachmentSaveStrategy(): AttachmentSaveStrategy {
+  const strategy = getPref("attachmentSaveStrategy");
+  if (strategy === "missing" || strategy === "always" || strategy === "none") {
+    return strategy;
+  }
+  return getPref("saveAttachments") === true ? "missing" : "none";
+}
+
+export function shouldTryAttachmentSave(
+  newItem: any,
+  oldItem: Zotero.Item,
+  strategy: AttachmentSaveStrategy,
+) {
+  if (strategy === "none") {
+    return false;
+  }
+
+  if (!getFirstAttachment(newItem)) {
+    return false;
+  }
+
+  if (strategy === "always") {
+    return true;
+  }
+
+  const attachmentIDs =
+    typeof oldItem.getAttachments === "function"
+      ? oldItem.getAttachments() || []
+      : [];
+  return attachmentIDs.length === 0;
+}
+
+export function buildAttachmentImportOptions(newItem: any, oldItem: Zotero.Item) {
+  const attachment = getFirstAttachment(newItem);
+  if (!attachment) {
+    return {
+      ok: false as const,
+      reason: "missing attachment",
+    };
+  }
+
+  const url = cleanText(attachment.url);
+  if (!url) {
+    return {
+      ok: false as const,
+      reason: "missing attachment URL",
+    };
+  }
+
+  const contentType = cleanText(attachment.mimeType);
+  if (!contentType) {
+    return {
+      ok: false as const,
+      reason: "missing attachment mimeType",
+    };
+  }
+
+  const title = cleanText(attachment.title) || cleanText(newItem.title);
+  if (!title) {
+    return {
+      ok: false as const,
+      reason: "missing attachment title",
+    };
+  }
+
+  return {
+    ok: true as const,
+    options: {
+      url,
+      contentType,
+      title,
+      parentItemID: oldItem.id,
+      libraryID: (oldItem as any).libraryID || Zotero.Libraries.userLibraryID,
+      fileBaseName: buildAttachmentFileBaseName(newItem),
+    },
+  };
+}
+
+function getFirstAttachment(newItem: any) {
+  return Array.isArray(newItem.attachments) ? newItem.attachments[0] : null;
+}
+
+function buildAttachmentFileBaseName(newItem: any) {
+  const creator = Array.isArray(newItem.creators)
+    ? cleanText(newItem.creators[0]?.lastName)
+    : "";
+  const year = cleanText(newItem.date).slice(0, 4);
+  const title = cleanText(newItem.title).replace(/\//g, "");
+  return [creator, year, title].filter(Boolean).join(" - ") || "metadata";
+}
+
 function getErrorMessage(err: unknown) {
   if (err instanceof Error) {
     return err.message;
@@ -477,16 +666,15 @@ async function saveNote(newItem: any, oldItem: Zotero.Item) {
 }
 
 async function saveAttachments(newItem: any, oldItem: Zotero.Item) {
-  const options = {
-    url: newItem["attachments"][0]["url"],
-    contentType: newItem["attachments"][0]["mimeType"],
-    title: newItem["attachments"][0]["title"],
-    parentItemID: oldItem.id,
-    libraryID: Zotero.Libraries.userLibraryID,
-    fileBaseName: `${newItem.creators[0].lastName} - ${newItem.date.slice(0, 4)} - ${newItem.title.replace(/\//g, "")}`,
-  };
-  Zotero.Attachments.importFromURL(options);
+  const attachment = buildAttachmentImportOptions(newItem, oldItem);
+  if (!attachment.ok) {
+    ztoolkit.log(`Skip attachment save: ${attachment.reason}`);
+    return attachment;
+  }
+
+  await Zotero.Attachments.importFromURL(attachment.options);
   ztoolkit.log("save Attachments successful");
+  return attachment;
 }
 
 async function updateItem(newItem: any, oldItem: Zotero.Item) {
@@ -573,7 +761,36 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
     `Applied ${result.update.applied.length} metadata changes, skipped ${result.update.skipped.length}`,
   );
 
+  if (result.confirmed) {
+    await saveSupplementalMetadata(itemJSON, oldItem);
+  }
+
   return result;
+}
+
+async function saveSupplementalMetadata(newItem: any, oldItem: Zotero.Item) {
+  if (getPref("saveNotes") === true) {
+    await saveMetadataNote(newItem, oldItem);
+  }
+
+  const strategy = getAttachmentSaveStrategy();
+  if (shouldTryAttachmentSave(newItem, oldItem, strategy)) {
+    await saveAttachments(newItem, oldItem);
+  }
+}
+
+async function saveMetadataNote(newItem: any, oldItem: Zotero.Item) {
+  if (!Array.isArray(newItem.notes) || !newItem.notes.length) {
+    return;
+  }
+
+  const noteIDs =
+    typeof oldItem.getNotes === "function" ? oldItem.getNotes() || [] : [];
+  if (noteIDs.length > 0) {
+    return;
+  }
+
+  await saveNote(newItem, oldItem);
 }
 
 type MetadataChange = {
