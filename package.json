@@ -19,7 +19,7 @@
     "lint:check": "prettier --check . && eslint .",
     "lint:fix": "prettier --write . && eslint . --fix",
     "lint": "npm run lint:fix",
-    "test": "node scripts/smoke-metadata-douban-fallback.mjs",
+    "test": "node scripts/smoke-metadata-douban-fallback.mjs && node scripts/smoke-dev-runtime-safety.mjs",
     "release": "release-it --only-version --preReleaseId=beta",
     "update-deps": "npm update --save"
   },
