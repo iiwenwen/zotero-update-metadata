@@ -87,6 +87,11 @@ watchdog/queue mode：
 - 如果任务卡住，记录原因，标记 `BLOCKED`，然后进入下一个任务
 - watchdog/queue mode 完成一个任务后必须进入 NEXT：在时间预算、失败预算和用户指令允许时，重新回到 ORCHESTRATE，继续选择下一个 ready task；只有没有 ready task、预算耗尽、遇到人类决策点或用户要求停止时才结束
 - queue 选题默认采用“先热身、再攻坚”：P0/P1 仍优先于普通任务；同优先级内先选 SIMPLE、低风险、可验证的小任务，再选 COMPLEX，以便 AI 先沉淀同类问题套路
+- 每个被选中任务进入执行前必须记录 `intent_self_check`。这不是否定所有任务；如果目标、上下文和元反思都清楚，且风险允许，就直接干。如果不清楚，才先调研并列出关键决策点等待用户拍板
+- SIMPLE 任务和安全原型任务优先使用 `MVP/ALIGN loop`：先做最小可运行产出，再在每个关键小步后回看 Goal、Non-goals 和 Acceptance Criteria，发现偏移就收窄或回到 PLAN
+- REVIEW 必须按任务风险选择 focused self-review 或项目级 `zotero-review` 对抗自检；涉及 Zotero 数据、watchdog、队列、Git scope 或复杂流程时，必须多视角检查冗余/重复、并发/边界、Zotero 数据安全、旧功能回归、验证与 Git scope
+- FIX 必须分轮收敛。每轮修复后输出 `FIX_ROUND_PASS` 或 `FIX_ROUND_FAIL`，记录本轮修复的 P0/P1/P2、剩余问题、diff/测试证据和沉淀规则；禁止原地重复提交同一无效修复
+- 局部失败必须进入 `incident_matrix`：按 if/then 记录、恢复、标记 `BLOCKED` 或 `NEED_HUMAN_DECISION`，然后回到 NEXT。单个任务失败不得阻塞整个队列
 
 ---
 
@@ -117,12 +122,31 @@ certainty: HIGH / MEDIUM / LOW
 risk: LOW / MEDIUM / HIGH
 ```
 
+同时必须记录动手前自检：
+
+```yaml
+intent_self_check:
+  has_context: true | false
+  goal_clear: true | false
+  meta_reflected: true | false
+  needs_redefinition: true | false
+  decision_points: []
+  action: execute | research_then_decide | need_human_decision
+```
+
+判定原则：
+
+- `intent_self_check` 的目的不是让 Agent 否定所有任务，而是防止“没经过编排就开工”
+- 如果 `has_context=true`、`goal_clear=true`、`meta_reflected=true`、`needs_redefinition=false`，且 risk 不是 HIGH，可以继续进入 COMPLEXITY / EXECUTE
+- 如果上下文不足但可通过本地代码、Issue 摘要或既有文档调研补齐，先调研并列出关键决策点；调研后重新生成 `intent_self_check`
+- 如果目标定义、产品取舍、数据风险或高风险操作需要人类判断，输出 `NEED_HUMAN_DECISION`
+
 执行规则：
 
 ```text
 HIGH certainty + LOW risk      -> 可以自主执行
 HIGH certainty + MEDIUM risk   -> 可以自主执行，但必须加强验证
-MEDIUM certainty               -> 先调研，列出关键决策点
+MEDIUM certainty               -> 先调研并重新分流；调研后清楚且风险允许则执行，否则列出关键决策点
 LOW certainty                  -> NEED_HUMAN_DECISION
 HIGH risk                      -> NEED_HUMAN_DECISION
 ```
@@ -287,6 +311,56 @@ complexity: SIMPLE / COMPLEX
 
 如果自审存在 P0/P1/P2 必修问题，不得创建 PR，不得输出 `PASS`。
 
+### 8.1 Run-First Alignment Rule
+
+计划只是脚手架，不是唯一真相。对 SIMPLE 任务、低风险文档/流程变更和安全原型任务，默认采用 `MVP/ALIGN loop`：
+
+1. 先产生最小可运行、可检查或可 diff 的版本
+2. 每完成一个关键小步，记录一次 `ALIGN_CHECK`
+3. `ALIGN_CHECK` 必须对照 Goal、Non-goals、Acceptance Criteria、旧功能风险和 Git scope
+4. 对齐通过就继续；发现偏移就缩小范围、回到 PLAN 或输出 `NEED_HUMAN_DECISION`
+
+复杂任务仍需 PLAN，但 PLAN 最多 7 步，并且只作为可调整脚手架；实际产出和验证证据优先。
+
+### 8.2 Adversarial Review And Fix Rounds
+
+项目级对抗自检 Skill 为：
+
+```text
+.codex/skills/zotero-review/SKILL.md
+```
+
+触发条件：
+
+- Zotero 插件行为、元数据写入、附件/笔记/标签/Extra 字段、安全边界或真实资料库风险
+- watchdog、队列、锁、NEXT、状态持久化或自动化 smoke test
+- COMPLEX 任务、HIGH risk 任务、PR handoff 前或自审发现 P0/P1/P2
+- 用户明确要求“对抗性自检”“多视角评审”或 `zotero-review`
+
+`zotero-review` 至少覆盖：
+
+- 重复和冗余
+- 并发和边界
+- Zotero 数据安全
+- 是否破坏旧功能
+- 验证与 Git scope
+
+分级修复必须按 P0 -> P1 -> P2 收敛。每一轮必须输出：
+
+```yaml
+fix_round_signal: FIX_ROUND_PASS | FIX_ROUND_FAIL
+fixed:
+  - <P0/P1/P2 id>
+remaining:
+  - <P0/P1/P2 id>
+evidence:
+  diff: <files or none>
+  verification: <commands/results>
+lesson: <可沉淀规则或 none>
+```
+
+`FIX_ROUND_FAIL` 不等于停止；如果仍在预算内且不是同一问题连续两轮失败，必须继续真修。若同一问题连续两轮没有真实 diff、验证证据或可解释的非代码修复，标记 `BLOCKED`，记录原因，然后进入 NEXT。
+
 ---
 
 ## 9. Defense & Integrity Gate
@@ -318,6 +392,22 @@ PLAN 必须记录：
 - 如果无法保证原子性或幂等性，必须给出明确手动恢复路径。
 - 如果恢复路径依赖人类判断，必须输出 `NEED_HUMAN_DECISION`，不得进入 EXECUTE。
 - VERIFY 必须复核上述完整性项是否仍然成立。
+
+### 9.1 incident_matrix
+
+遇到异常时必须执行 `incident_matrix`，不要停在原地等用户：
+
+| if | then |
+| --- | --- |
+| 测试失败 | 记录命令和摘要，最小修复后复跑；同一任务连续 2 轮仍失败则标记 `BLOCKED`，保留分支/现场，进入 NEXT |
+| Review 连续返回 P0/P1/P2 | 按分级真修并复跑 VERIFY/REVIEW；同一问题连续 2 轮无法清零则标记 `BLOCKED`，记录 review 输出，进入 NEXT |
+| 插件自动化 smoke test 缺失且本轮无法补齐 | 输出 `BLOCKED: plugin automation smoke test unavailable`，记录缺口、已尝试动作和所需脚本/环境，进入 NEXT |
+| `.ai/watchdog.lock` 冲突 | fresh lock 输出 `HEARTBEAT_OK`；stale lock 记录后替换并继续；无法判断则 `NEED_HUMAN_DECISION` |
+| 命令、review 或外部工具超时 | kill 或停止当前子进程，记录超时点和已完成证据；可恢复则重试一次，不可恢复则 `BLOCKED` 并进入 NEXT |
+| Git scope 越界 | 立即取消越界 stage，记录文件列表，回到 VERIFY；无法隔离 in-scope 与用户改动时输出 `NEED_HUMAN_DECISION` |
+| 不可恢复错误 | 保留现场，更新 `.ai/STATE.md` 和 `.ai/runs/`，当前任务标记 `BLOCKED`，进入 NEXT |
+
+矩阵原则：局部失败可阻塞单条任务，但不能阻塞队列；每个绕行动作都必须可审计、可恢复。
 
 ---
 
