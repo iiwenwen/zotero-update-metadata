@@ -4,14 +4,7 @@ import zotero from "@zotero-plugin/eslint-config";
 
 export default [
   {
-    ignores: [
-      "build/**",
-      "logs/**",
-      "dist/**",
-      "node_modules/**",
-      "scripts/**",
-      "**/*.bak",
-    ],
+    ignores: ["build/**", "logs/**", "dist/**", "node_modules/**", "**/*.bak"],
   },
   ...zotero({
     overrides: [
@@ -30,6 +23,14 @@ export default [
           "@typescript-eslint/no-unused-vars": "off",
           "@typescript-eslint/no-explicit-any": "off",
           "@typescript-eslint/no-non-null-assertion": "off",
+        },
+      },
+      {
+        files: ["scripts/**/*.mjs"],
+        languageOptions: {
+          globals: {
+            console: "readonly",
+          },
         },
       },
     ],
