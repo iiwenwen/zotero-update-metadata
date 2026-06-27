@@ -48,8 +48,8 @@ export async function getMeta() {
         throw new Error("Unsupported or missing Douban URL");
       }
 
-      const newItem = await translateURL(url);
-      if (!newItem) {
+      const translatedItem = await translateURL(url);
+      if (!translatedItem) {
         throw new Error("No translated metadata found");
       }
 
@@ -64,7 +64,7 @@ export async function getMeta() {
       }
 
       const startTime = Date.now();
-      await updateItem(newItem, item);
+      await updateItem(translatedItem, item);
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
       popWin.changeLine({
@@ -117,19 +117,30 @@ async function translateDocument(doc: Document) {
   const translate = new Zotero.Translate.Web();
   translate.setDocument(doc);
   const translators = await translate.getTranslators();
-  // TEMP: Until there's a generic webpage translator
+
   if (!translators.length) {
-    return [];
+    throw new Error("No Zotero translator found for this Douban URL");
   }
+
+  ztoolkit.log(
+    `Matched translators: ${translators
+      .map((translator: any) => translator.label || translator.translatorID)
+      .join(", ")}`,
+  );
+
   translate.setTranslator(translators[0]);
 
   const options = getSettings();
   try {
-    return await translate.translate(options);
+    const translatedItems = await translate.translate(options);
+    if (!Array.isArray(translatedItems)) {
+      throw new Error("Translator did not return an item list");
+    }
+    return translatedItems;
   } catch (err) {
     ztoolkit.log(err);
+    throw new Error(`Zotero translator failed: ${getErrorMessage(err)}`);
   }
-  return [];
 }
 
 async function translateURL(url: string) {
@@ -152,9 +163,7 @@ function _getConcurrentCaller(key: string, interval: number) {
     return _concurrentCallers.get(key);
   }
 
-  const { ConcurrentCaller } = Components.utils.import(
-    "resource://zotero/concurrentCaller.js",
-  );
+  const { ConcurrentCaller } = importConcurrentCaller();
 
   const caller = new ConcurrentCaller({
     numConcurrent: 1,
@@ -165,13 +174,36 @@ function _getConcurrentCaller(key: string, interval: number) {
   return caller;
 }
 
+function importConcurrentCaller() {
+  const chromeUtils = (globalThis as unknown as { ChromeUtils?: any })
+    .ChromeUtils;
+
+  if (chromeUtils?.importESModule) {
+    return chromeUtils.importESModule("resource://zotero/concurrentCaller.mjs");
+  }
+
+  return Components.utils.import("resource://zotero/concurrentCaller.js");
+}
+
 async function _translateURLNow(url: string) {
   const doc = (await Zotero.HTTP.processDocuments(url, (doc) => doc))[0];
+  if (!doc) {
+    throw new Error("Unable to load metadata URL");
+  }
+
   const newItems = await translateDocument(doc);
   if (!newItems.length) {
-    return null;
+    throw new Error("Zotero translator returned no metadata items");
   }
+
   return newItems[0];
+}
+
+function getErrorMessage(err: unknown) {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }
 
 async function saveNote(newItem: any, oldItem: Zotero.Item) {
@@ -270,9 +302,72 @@ async function updateItem(newItem: any, oldItem: Zotero.Item) {
   // }
   // await oldItem.saveTx();
   // return oldItem;
-  ztoolkit.log(typeof newItem);
-  // const json = newItem.toJSON();
-  oldItem.fromJSON(newItem);
+  const itemJSON =
+    typeof newItem.toJSON === "function" ? newItem.toJSON() : newItem;
+
+  if (!itemJSON || typeof itemJSON !== "object") {
+    throw new Error("Translated metadata is not a valid item object");
+  }
+
+  ztoolkit.log(`Update item from translated ${itemJSON.itemType ?? "item"}`);
+
+  try {
+    oldItem.fromJSON(itemJSON);
+  } catch (err) {
+    ztoolkit.log(`fromJSON update failed, falling back to field update: ${err}`);
+    updateItemFields(itemJSON, oldItem);
+  }
+
   await oldItem.saveTx();
   return oldItem;
+}
+
+function updateItemFields(newItem: any, oldItem: Zotero.Item) {
+  if (newItem.itemType) {
+    const itemTypeID = Zotero.ItemTypes.getID(newItem.itemType);
+    if (itemTypeID) {
+      oldItem.setType(itemTypeID);
+    }
+  }
+
+  if (Array.isArray(newItem.creators)) {
+    oldItem.setCreators(newItem.creators);
+  }
+
+  const fields = [
+    "title",
+    "shortTitle",
+    "publisher",
+    "date",
+    "ISBN",
+    "numPages",
+    "abstractNote",
+    "url",
+    "language",
+    "series",
+    "edition",
+    "place",
+    "extra",
+  ];
+
+  for (const field of fields) {
+    if (!(field in newItem)) {
+      continue;
+    }
+
+    const fieldID = Zotero.ItemFields.getID(field);
+    if (!fieldID) {
+      continue;
+    }
+
+    if (!Zotero.ItemFields.isValidForType(fieldID, oldItem.itemTypeID)) {
+      continue;
+    }
+
+    oldItem.setField(field, newItem[field] ?? "");
+  }
+
+  if (Array.isArray(newItem.tags)) {
+    oldItem.setTags(newItem.tags);
+  }
 }
