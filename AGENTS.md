@@ -303,6 +303,26 @@ complexity: SIMPLE / COMPLEX
 - Zotero 插件 E2E 必须使用隔离 profile、临时测试库、fixture 或等价 harness，不得触碰真实用户资料库。
 - 如果任务仅修改文档、流程规则或本机 AI 工作态，且不存在产品功能路径，必须明确记录 `E2E: not applicable` 的原因，并执行等价验证，例如结构化文本检查、规则检索、diff check、staged scope 检查和自审。
 
+### 8.3 Zotero 测试安全边界
+
+Zotero 插件测试分为三档，必须先声明采用哪一档：
+
+1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。默认优先使用这一档。
+2. `isolated Zotero integration`：允许启动 Zotero，但必须同时满足：使用隔离 profile、临时测试库、测试专用 Zotero 应用或明确隔离的可执行路径、不会连接真实用户资料库；执行前必须输出将运行的命令、profile 路径和数据目录，并获得用户确认。
+3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
+
+禁止把“带 `-profile` 的 `/Applications/Zotero.app`”自动视为安全测试环境。即使 profile 指向测试目录，只要可执行文件是正式 Zotero.app，也必须先停下确认。
+
+在执行任何可能启动 Zotero 的命令前，必须先检查并记录：
+
+- 当前是否已有 Zotero 进程
+- 将使用的 Zotero 可执行路径
+- profile / data directory 是否隔离
+- 测试是否会写入条目、附件、笔记、标签、Extra 或偏好
+- 退出/清理和失败恢复方式
+
+如果无法证明以上隔离条件，允许继续做 `static/unit smoke`，但不得声明插件运行时验证已完成，不得关闭涉及运行时行为的 Issue。
+
 创建 PR 或准备 PR handoff 前，必须先自审。自审至少覆盖：
 
 - Goal / Acceptance Criteria 是否全部满足
