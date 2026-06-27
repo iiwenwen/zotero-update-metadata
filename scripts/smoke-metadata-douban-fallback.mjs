@@ -27,6 +27,7 @@ try {
     buildFallbackDoubanItem,
     extractDoubanTitle,
     formatBatchUpdateSummary,
+    formatBatchUpdateSummaryLines,
     formatMetadataUpdatePreview,
     getItemISBN,
     isNoTitleSpecifiedError,
@@ -356,6 +357,28 @@ try {
       },
     }),
     "Summary: success 2, failed 1, skipped 1, canceled 1, fallback 1, reasons: missing URL x1; translator failed x1",
+  );
+  assert.deepEqual(
+    formatBatchUpdateSummaryLines({
+      success: 2,
+      failed: 1,
+      skipped: 1,
+      canceled: 1,
+      fallback: 1,
+      reasons: {
+        "missing URL": 1,
+        "translator failed": 1,
+      },
+    }),
+    [
+      "Summary:",
+      "success 2",
+      "failed 1",
+      "skipped 1",
+      "canceled 1",
+      "fallback 1",
+      "reasons: missing URL x1; translator failed x1",
+    ],
   );
   assert.equal(
     formatBatchUpdateSummary(

@@ -231,11 +231,17 @@ export async function getMeta() {
     }
   }
 
-  popWin.changeLine({
-    type: summary.failed ? "default" : "success",
-    progress: 100,
-    text: formatBatchUpdateSummary(summary, getBatchUpdateSummaryLabels()),
-    idx: 2,
+  const summaryLines = formatBatchUpdateSummaryLines(
+    summary,
+    getBatchUpdateSummaryLabels(),
+  );
+  summaryLines.forEach((text, offset) => {
+    popWin.changeLine({
+      type: summary.failed ? "default" : "success",
+      progress: offset === 0 ? 100 : 0,
+      text,
+      idx: 2 + offset,
+    });
   });
 }
 
@@ -510,9 +516,7 @@ export function formatBatchUpdateSummary(
   summary: BatchUpdateSummary,
   labels: BatchUpdateSummaryLabels = DEFAULT_BATCH_UPDATE_SUMMARY_LABELS,
 ) {
-  const reasonText = Object.entries(summary.reasons)
-    .map(([reason, count]) => `${reason} x${count}`)
-    .join("; ");
+  const reasonText = formatBatchUpdateReasonText(summary);
 
   return [
     `${labels.title}: ${labels.success} ${summary.success}`,
@@ -524,6 +528,30 @@ export function formatBatchUpdateSummary(
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+export function formatBatchUpdateSummaryLines(
+  summary: BatchUpdateSummary,
+  labels: BatchUpdateSummaryLabels = DEFAULT_BATCH_UPDATE_SUMMARY_LABELS,
+) {
+  const reasonText = formatBatchUpdateReasonText(summary);
+
+  return [
+    `${labels.title}:`,
+    `${labels.success} ${summary.success}`,
+    `${labels.failed} ${summary.failed}`,
+    `${labels.skipped} ${summary.skipped}`,
+    `${labels.canceled} ${summary.canceled}`,
+    `${labels.fallback} ${summary.fallback}`,
+    reasonText ? `${labels.reasons}: ${reasonText}` : "",
+  ]
+    .filter(Boolean);
+}
+
+function formatBatchUpdateReasonText(summary: BatchUpdateSummary) {
+  return Object.entries(summary.reasons)
+    .map(([reason, count]) => `${reason} x${count}`)
+    .join("; ");
 }
 
 export function normalizeAttachmentSaveStrategy(
