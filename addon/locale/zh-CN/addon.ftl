@@ -20,6 +20,13 @@ message-updateItem-skip = 已跳过更新条目
 message-getMeta-error = 获取元数据失败
 
 metadata-preview-title = 确认更新元数据
+batch-summary-title = 汇总
+batch-summary-success = 成功
+batch-summary-failed = 失败
+batch-summary-skipped = 跳过
+batch-summary-canceled = 取消
+batch-summary-fallback = 备用来源
+batch-summary-reasons = 原因
 
 startup-begin = 开始加载
 startup-finish = 加载完成

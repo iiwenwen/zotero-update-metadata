@@ -357,6 +357,31 @@ try {
     }),
     "Summary: success 2, failed 1, skipped 1, canceled 1, fallback 1, reasons: missing URL x1; translator failed x1",
   );
+  assert.equal(
+    formatBatchUpdateSummary(
+      {
+        success: 2,
+        failed: 1,
+        skipped: 1,
+        canceled: 1,
+        fallback: 1,
+        reasons: {
+          "missing URL": 1,
+          "translator failed": 1,
+        },
+      },
+      {
+        title: "汇总",
+        success: "成功",
+        failed: "失败",
+        skipped: "跳过",
+        canceled: "取消",
+        fallback: "备用来源",
+        reasons: "原因",
+      },
+    ),
+    "汇总: 成功 2, 失败 1, 跳过 1, 取消 1, 备用来源 1, 原因: missing URL x1; translator failed x1",
+  );
 
   assert.equal(normalizeAttachmentSaveStrategy("always"), "always");
   assert.equal(normalizeAttachmentSaveStrategy("bad-value"), "none");

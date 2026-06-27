@@ -45,6 +45,16 @@ export type BatchUpdateSummary = {
   reasons: Record<string, number>;
 };
 
+export type BatchUpdateSummaryLabels = {
+  title: string;
+  success: string;
+  failed: string;
+  skipped: string;
+  canceled: string;
+  fallback: string;
+  reasons: string;
+};
+
 export type AttachmentSaveStrategy = "none" | "missing" | "always";
 
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
@@ -106,10 +116,13 @@ export async function getMeta() {
   const items = ZoteroPane.getSelectedItems().filter((item) => {
     return item.isRegularItem();
   });
-  const popWin = new ztoolkit.ProgressWindow(config.addonName, {
-    closeOnClick: true,
-    closeTime: -1,
-  });
+  const popWin = new ztoolkit.ProgressWindow(
+    getString("itemmenu-updateMetadata-label"),
+    {
+      closeOnClick: true,
+      closeTime: -1,
+    },
+  );
 
   popWin
     .createLine({
@@ -221,7 +234,7 @@ export async function getMeta() {
   popWin.changeLine({
     type: summary.failed ? "default" : "success",
     progress: 100,
-    text: formatBatchUpdateSummary(summary),
+    text: formatBatchUpdateSummary(summary, getBatchUpdateSummaryLabels()),
     idx: 2,
   });
 }
@@ -471,18 +484,43 @@ function recordReason(summary: BatchUpdateSummary, reason: string) {
   summary.reasons[reason] = (summary.reasons[reason] || 0) + 1;
 }
 
-export function formatBatchUpdateSummary(summary: BatchUpdateSummary) {
+const DEFAULT_BATCH_UPDATE_SUMMARY_LABELS: BatchUpdateSummaryLabels = {
+  title: "Summary",
+  success: "success",
+  failed: "failed",
+  skipped: "skipped",
+  canceled: "canceled",
+  fallback: "fallback",
+  reasons: "reasons",
+};
+
+function getBatchUpdateSummaryLabels(): BatchUpdateSummaryLabels {
+  return {
+    title: getString("batch-summary-title"),
+    success: getString("batch-summary-success"),
+    failed: getString("batch-summary-failed"),
+    skipped: getString("batch-summary-skipped"),
+    canceled: getString("batch-summary-canceled"),
+    fallback: getString("batch-summary-fallback"),
+    reasons: getString("batch-summary-reasons"),
+  };
+}
+
+export function formatBatchUpdateSummary(
+  summary: BatchUpdateSummary,
+  labels: BatchUpdateSummaryLabels = DEFAULT_BATCH_UPDATE_SUMMARY_LABELS,
+) {
   const reasonText = Object.entries(summary.reasons)
     .map(([reason, count]) => `${reason} x${count}`)
     .join("; ");
 
   return [
-    `Summary: success ${summary.success}`,
-    `failed ${summary.failed}`,
-    `skipped ${summary.skipped}`,
-    `canceled ${summary.canceled}`,
-    `fallback ${summary.fallback}`,
-    reasonText ? `reasons: ${reasonText}` : "",
+    `${labels.title}: ${labels.success} ${summary.success}`,
+    `${labels.failed} ${summary.failed}`,
+    `${labels.skipped} ${summary.skipped}`,
+    `${labels.canceled} ${summary.canceled}`,
+    `${labels.fallback} ${summary.fallback}`,
+    reasonText ? `${labels.reasons}: ${reasonText}` : "",
   ]
     .filter(Boolean)
     .join(", ");

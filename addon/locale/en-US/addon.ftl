@@ -22,6 +22,13 @@ message-updateItem-skip = updateItem skipped
 message-getMeta-error = get metadata failed
 
 metadata-preview-title = Confirm metadata update
+batch-summary-title = Summary
+batch-summary-success = success
+batch-summary-failed = failed
+batch-summary-skipped = skipped
+batch-summary-canceled = canceled
+batch-summary-fallback = fallback
+batch-summary-reasons = reasons
 
 startup-begin = Start loading
 startup-finish = Finish loading
