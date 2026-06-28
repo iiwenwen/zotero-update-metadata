@@ -16,7 +16,7 @@ Required perspectives:
 1. Redundancy Reviewer: find duplicated rules, overlapping workflow paths, dead text, stale state, repeated prompts, and unnecessary abstractions.
 2. Concurrency And Boundary Reviewer: inspect watchdog locks, NEXT re-entry, queue ordering, retry budgets, idempotency, partial writes, timeouts, and entity-count limits.
 3. Zotero Data Safety Reviewer: protect real user libraries. Check item fields, attachments, notes, tags, Extra, URL/source updates, translator behavior, backups, isolated profiles, fixtures, and rollback paths.
-4. Regression Reviewer: check old commands, menus, preferences, build scripts, hot reload, CNB/GitHub sync, tests, and prior documented workflow guarantees.
+4. Regression Reviewer: check old commands, menus, preferences, build scripts, hot reload, CNB handoff, tests, and prior documented workflow guarantees.
 5. Verification And Git Scope Reviewer: check smoke/E2E evidence, `FIX_ROUND_PASS/FAIL`, staged files, secrets, cache, local `.ai` state, `.codex` scope exceptions, and commit-message evidence.
 
 ## Severity

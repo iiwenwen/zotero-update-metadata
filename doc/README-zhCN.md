@@ -1,10 +1,8 @@
 # Zotero Update Metadata
 
 [![zotero target version](https://img.shields.io/badge/Zotero-7--9-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
-[![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
 
-[![English](https://img.shields.io/badge/英文-English-blue.svg)](https://github.com/iiwenwen/zotero-update-metadata/blob/main/README.md)
-[![Chinese](https://img.shields.io/badge/中文-Chinese-blue.svg)](https://github.com/iiwenwen/zotero-update-metadata/blob/main/doc/README-zhCN.md)
+[English](../README.md) | [Chinese](README-zhCN.md)
 
 这个项目允许你直接从Zotero条目的URL字段更新或保存元数据，无需在对应页面上保存元数据。
 
@@ -29,11 +27,9 @@
 
 ## 致谢
 
-- 本插件使用[Zotero Plugin Template](https://github.com/windingwind/zotero-plugin-template)构建。
-- 本插件核心代码基于[mrtcode/zotero at update-metadata](https://github.com/mrtcode/zotero/tree/update-metadata)修改而来。
-- 本插件部分代码参考：
-  + [northword/zotero-format-metadata](https://github.com/northword/zotero-format-metadata)
-  + [windingwind/zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate/tree/87299879409b8d74c45b7690e0227232de407c0a)
+- 本插件使用 Zotero Plugin Template 脚手架构建。
+- 本插件核心代码基于早期 Zotero update-metadata 插件工作修改而来。
+- 本插件部分实现模式参考已有 Zotero 元数据与翻译插件。
 
 ## Disclaimer 免责声明
 
