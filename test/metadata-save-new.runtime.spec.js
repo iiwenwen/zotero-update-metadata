@@ -1,10 +1,13 @@
 /* global Zotero, assert, window */
 
 import {
+  applyMetadataUpdateWithConfirmation,
+  shouldConfirmBeforeMetadataUpdate,
   buildMetadataTranslationSettings,
   revealSavedMetadataItem,
   saveNewMetadataItem,
 } from "../src/modules/metadata";
+import { clearPref, setPref } from "../src/utils/prefs";
 
 describe("metadata save-new runtime", function () {
   this.timeout(30000);
@@ -12,6 +15,10 @@ describe("metadata save-new runtime", function () {
   const createdItemIDs = [];
 
   afterEach(async function () {
+    clearPref("confirmBeforeUpdate");
+    clearPref("saveAttachments");
+    clearPref("saveNotes");
+
     while (createdItemIDs.length) {
       const itemID = createdItemIDs.pop();
       try {
@@ -27,6 +34,89 @@ describe("metadata save-new runtime", function () {
         });
       }
     }
+  });
+
+  it("does not write an existing item when update confirmation is canceled", async function () {
+    let confirmCalls = 0;
+    const libraryID = Zotero.Libraries.userLibraryID;
+    const title = `Codex Runtime Confirm ${Date.now()}`;
+    const item = new Zotero.Item("book");
+
+    item.libraryID = libraryID;
+    item.setField("title", title);
+    item.setField("publisher", "Existing Publisher");
+    await item.saveTx();
+    createdItemIDs.push(item.id);
+
+    setPref("confirmBeforeUpdate", "true");
+    setPref("saveAttachments", false);
+    setPref("saveNotes", true);
+
+    assert.isTrue(shouldConfirmBeforeMetadataUpdate());
+
+    const canceled = await applyMetadataUpdateWithConfirmation(
+      {
+        itemType: "book",
+        title,
+        publisher: "Vintage",
+        notes: ["<p>Supplemental note should not be saved.</p>"],
+      },
+      item,
+      () => {
+        confirmCalls += 1;
+        return false;
+      },
+    );
+
+    const savedAfterCancel = await Zotero.Items.getAsync(item.id, {
+      noCache: true,
+    });
+
+    assert.equal(canceled.confirmed, false);
+    assert.equal(canceled.status, "canceled");
+    assert.equal(confirmCalls, 1);
+    assert.equal(item.getField("publisher"), "Existing Publisher");
+    assert.equal(savedAfterCancel.getField("publisher"), "Existing Publisher");
+    assert.deepEqual(savedAfterCancel.getNotes(), []);
+    assert.deepEqual(savedAfterCancel.getAttachments(), []);
+
+    window.debug({
+      marker: "metadata-runtime-confirm-canceled",
+      itemID: item.id,
+      confirmCalls,
+      noteCount: savedAfterCancel.getNotes().length,
+      attachmentCount: savedAfterCancel.getAttachments().length,
+    });
+
+    setPref("saveNotes", false);
+
+    const applied = await applyMetadataUpdateWithConfirmation(
+      {
+        itemType: "book",
+        title,
+        publisher: "Vintage",
+      },
+      item,
+      () => {
+        confirmCalls += 1;
+        return true;
+      },
+    );
+    const savedAfterApply = await Zotero.Items.getAsync(item.id, {
+      noCache: true,
+    });
+
+    assert.equal(applied.confirmed, true);
+    assert.equal(applied.status, "applied");
+    assert.equal(confirmCalls, 2);
+    assert.equal(savedAfterApply.getField("publisher"), "Vintage");
+
+    window.debug({
+      marker: "metadata-runtime-confirm-applied",
+      itemID: item.id,
+      confirmCalls,
+      publisher: savedAfterApply.getField("publisher"),
+    });
   });
 
   it("uses non-saving provider settings before explicit save", function () {
