@@ -44,7 +44,6 @@ describe("metadata save-new runtime", function () {
     window.debug({
       marker: "metadata-runtime-translation-settings",
       saveAttachments: settings.saveAttachments,
-      libraryID: settings.libraryID,
     });
   });
 
@@ -106,7 +105,6 @@ describe("metadata save-new runtime", function () {
     window.debug({
       marker: "metadata-runtime-save-new",
       savedItemID: result.item.id,
-      title: saved.getField("title"),
       attachmentCount: saved.getAttachments().length,
       beforeTopLevelCount: beforeIDs.length,
       afterTopLevelCount: afterIDs.length,

@@ -39,6 +39,7 @@ try {
     shouldConfirmBeforeMetadataUpdate,
     shouldTryAttachmentSave,
     saveNewMetadataItem,
+    sanitizeMetadataLogData,
     translateWithMetadataProviders,
   } = require(outfile);
 
@@ -96,6 +97,36 @@ try {
   assert.equal(METADATA_RESULT_CLOSE_TIME_MS, 8000);
   assert.equal(lowersDatePrecision("2020-05-06", "2020"), true);
   assert.equal(lowersDatePrecision("2020", "2020-05-06"), false);
+  assert.deepEqual(
+    sanitizeMetadataLogData({
+      schema: "save",
+      title: "Private Reading Title",
+      libraryID: 1,
+      collectionID: 9,
+      savedItemID: 123,
+      attachmentCount: 0,
+      attempts: [
+        {
+          provider: "douban-url",
+          ok: false,
+          error: "No translated metadata found",
+          url: "https://book.douban.com/subject/private/",
+        },
+      ],
+    }),
+    {
+      schema: "save",
+      savedItemID: 123,
+      attachmentCount: 0,
+      attempts: [
+        {
+          provider: "douban-url",
+          ok: false,
+          error: "No translated metadata found",
+        },
+      ],
+    },
+  );
   assert.equal(
     mergeExtra("DOI: old-doi\nUser Note: keep me", "DOI: new-doi\nISBN: 978"),
     "DOI: old-doi\nUser Note: keep me\nISBN: 978",

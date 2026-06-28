@@ -71,6 +71,29 @@ export type SaveNewMetadataItemResult = {
 };
 
 const METADATA_LOG_PREFIX = "[metadata]";
+const METADATA_LOG_ALLOWED_KEYS = new Set([
+  "attempts",
+  "attachmentCount",
+  "canceled",
+  "error",
+  "failed",
+  "fallback",
+  "inLibraryRoot",
+  "itemCount",
+  "itemID",
+  "itemType",
+  "ok",
+  "provider",
+  "reason",
+  "reasons",
+  "saveAttachments",
+  "savedItemID",
+  "schema",
+  "selected",
+  "skipped",
+  "sourceItemID",
+  "success",
+]);
 
 export type MetadataRunContext = {
   win?: _ZoteroTypes.MainWindow;
@@ -939,9 +962,31 @@ function getPrimaryMetadataForSave(newItem: any) {
   return metadata;
 }
 
+export function sanitizeMetadataLogData(data: unknown): unknown {
+  if (Array.isArray(data)) {
+    return data.map(sanitizeMetadataLogData);
+  }
+
+  if (!data || typeof data !== "object") {
+    return data;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (!METADATA_LOG_ALLOWED_KEYS.has(key)) {
+      continue;
+    }
+    sanitized[key] = sanitizeMetadataLogData(value);
+  }
+  return sanitized;
+}
+
 function logMetadataEvent(event: string, data?: unknown) {
   try {
-    ztoolkit.log(`${METADATA_LOG_PREFIX} ${event}`, data ?? "");
+    ztoolkit.log(
+      `${METADATA_LOG_PREFIX} ${event}`,
+      sanitizeMetadataLogData(data),
+    );
   } catch {
     // Logging must never affect metadata writes.
   }
