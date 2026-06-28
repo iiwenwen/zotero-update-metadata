@@ -1,8 +1,6 @@
 pref-general = Setting
 pref-select =
     .value = mode：
-pref-saveAttachments =
-    .label = saveAttachments
 pref-confirmBeforeUpdate =
     .label = Confirm before updating existing items
 pref-attachmentStrategy =

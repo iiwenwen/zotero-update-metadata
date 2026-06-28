@@ -2,6 +2,8 @@ import { config, homepage } from "../../package.json";
 import { getString } from "../utils/locale";
 import { getPref, setPref } from "../utils/prefs";
 
+type AttachmentSaveStrategy = "none" | "missing" | "always";
+
 export function registerPrefsWindow() {
   Zotero.PreferencePanes.register({
     pluginID: config.addonID,
@@ -37,7 +39,6 @@ function bindPrefEvents() {
     return;
   }
 
-  bindPrefCheckbox(doc, "saveAttachments");
   bindPrefCheckbox(doc, "confirmBeforeUpdate");
   bindPrefCheckbox(doc, "saveNotes");
 
@@ -89,7 +90,7 @@ function bindPrefEvents() {
     {
       tag: "menulist",
       attributes: {
-        value: (getPref("attachmentSaveStrategy") as string) || "missing",
+        value: getVisibleAttachmentSaveStrategy(),
         native: "true",
       },
       listeners: [
@@ -98,8 +99,10 @@ function bindPrefEvents() {
           listener: (e: Event) => {
             if (e.target) {
               const target = e.target as HTMLInputElement;
-              setPref("attachmentSaveStrategy", target.value);
-              ztoolkit.log("attachmentSaveStrategy", target.value);
+              const value = target.value;
+              setPref("attachmentSaveStrategy", value);
+              setPref("saveAttachments", value !== "none");
+              ztoolkit.log("attachmentSaveStrategy", value);
             }
           },
         },
@@ -155,17 +158,24 @@ function bindPrefCheckbox(doc: Document, prefKey: string) {
   checkbox.addEventListener("command", saveCheckedState);
   checkbox.addEventListener("change", saveCheckedState);
 }
-// function disablePrefs() {
-//   const state = getPref("saveAttachments");
-//   ztoolkit.log("saveAttachments", state);
-//   // const doc = addon.data.prefs.window?.document;
-//   // const elemValue = fromElement?(doc.querySelector(`${config.addonRef}-saveAttachments`)as XUL.Checkbox).checked:getPref("saveAttachments")as boolean);
-//   // doc
-//   //   .querySelector(`${config.addonRef}-saveAttachments`)
-//   //   ?.addEventListener("command", (ev) => {
-//   //     ztoolkit.log("saveAttachments", state);
-//   //   });
-// }
+
+function getVisibleAttachmentSaveStrategy(): AttachmentSaveStrategy {
+  const strategy = getPref("attachmentSaveStrategy");
+  if (isAttachmentSaveStrategy(strategy)) {
+    return strategy;
+  }
+
+  const legacySaveAttachments = getPref("saveAttachments");
+  return legacySaveAttachments === false || legacySaveAttachments === "false"
+    ? "none"
+    : "missing";
+}
+
+function isAttachmentSaveStrategy(
+  value: unknown,
+): value is AttachmentSaveStrategy {
+  return value === "missing" || value === "always" || value === "none";
+}
 
 function makeId(type: string) {
   return `${config.addonRef}-${type}`;

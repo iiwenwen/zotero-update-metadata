@@ -15,6 +15,7 @@ describe("metadata save-new runtime", function () {
   const createdItemIDs = [];
 
   afterEach(async function () {
+    clearPref("attachmentSaveStrategy");
     clearPref("confirmBeforeUpdate");
     clearPref("saveAttachments");
     clearPref("saveNotes");
@@ -49,6 +50,7 @@ describe("metadata save-new runtime", function () {
     createdItemIDs.push(item.id);
 
     setPref("confirmBeforeUpdate", "true");
+    setPref("attachmentSaveStrategy", "none");
     setPref("saveAttachments", false);
     setPref("saveNotes", true);
 
