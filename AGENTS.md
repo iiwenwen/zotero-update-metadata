@@ -107,16 +107,26 @@ P0/P1/P2 findings block completion. Fix in rounds, then rerun relevant verificat
 
 ## 8. Git And Persistence
 
+Default branch workflow:
+
+- Do not do task work directly on `main`.
+- Start each `repo-change` or versioned `agent-process-maintenance` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
+- Commit, push, and open a PR from the task branch.
+- Do not merge the PR yourself unless the user explicitly asks and confirms.
+- Emergency direct commits to `main` require explicit user confirmation and must be recorded in the run notes.
+
 For completed `repo-change` tasks:
 
 - update `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and useful `.ai/memory/`
 - create one controlled git checkpoint commit
-- close the CNB Issue only after verification, review, and checkpoint pass
+- create a PR after verification, review, and checkpoint pass
+- close the CNB Issue only after the PR is merged or the user explicitly asks to close it
 
 For versioned `agent-process-maintenance` changes:
 
 - update local `.ai` task/run records
 - create a controlled git checkpoint commit
+- create a PR after verification, review, and checkpoint pass
 - do not create or close a CNB Issue unless the user explicitly requested remote tracking
 
 Git rules:
