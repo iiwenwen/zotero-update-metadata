@@ -109,6 +109,8 @@ Use focused self-review for simple low-risk tasks. Use `.codex/skills/zotero-rev
 
 P0/P1 findings always block completion. P2 blocks only when it affects correctness, data safety, regression, verification, git scope, release, or security. Fix blocking findings in rounds, then rerun relevant verification and review.
 
+After a CNB pull is open, CNB review feedback, comments, status checks, and conflict state are part of the autonomous loop. Blocking CNB feedback returns the task to the same branch for a fix round; non-blocking suggestions are recorded without merging.
+
 ## 8. Git And Persistence
 
 Default branch workflow:
@@ -177,6 +179,7 @@ Done:
 - <actual change>
 Verification:
 - <command/check>: <result>
+CNB Review: <clean | pending_human_merge | fixed_blocking_feedback | not_applicable>
 Commit: <hash or N/A — no repository changes>
 Notes: <none or residual risk>
 ```

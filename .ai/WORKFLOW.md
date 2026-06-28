@@ -232,7 +232,9 @@ priority:
 risk:
 certainty:
 branch:
-pr:
+cnb_pull:
+review_status:
+review_updated_at:
 last_attempt_at:
 failure_count:
 blocker:
@@ -929,6 +931,62 @@ FAIL
 
 如果自审存在 P0/P1/P2 必修问题，不得创建 CNB pull，不得输出 `PASS`。
 
+### 10.2 CNB_PULL_REVIEW：CNB 合并请求审核闭环
+
+`CNB_REVIEW_OPEN` 不是“无人再看”的完成态；它表示 Agent work complete，等待 CNB review/merge。watchdog 或用户要求继续处理该状态时，必须先读取 CNB pull 审核信号，再决定是否回到修复循环。
+
+触发条件：
+
+- CNB pull 有新评论、评审、状态检查失败、冲突或 base/head 更新
+- 用户要求“继续处理审核意见”“检查合并请求”“处理 review”
+- `.ai/QUEUE.md` 中 `review_status` 不是 `clean` 或 `pending_human_merge`
+
+读取来源：
+
+```bash
+bunx @cnbcool/cnb-cli pulls get-pull --repo <owner/repo> --number <pull-number>
+bunx @cnbcool/cnb-cli pulls list-pull-comments --repo <owner/repo> --number <pull-number>
+bunx @cnbcool/cnb-cli pulls list-pull-reviews --repo <owner/repo> --number <pull-number>
+bunx @cnbcool/cnb-cli pulls list-pull-commit-statuses --repo <owner/repo> --number <pull-number>
+bunx @cnbcool/cnb-cli pulls list-pull-files --repo <owner/repo> --number <pull-number>
+```
+
+记录字段：
+
+```yaml
+cnb_pull_review:
+  cnb_pull:
+  checked_at:
+  state:
+  blocked_on:
+  status_checks:
+  comments_checked: true | false
+  reviews_checked: true | false
+  files_checked: true | false
+  blocking_findings:
+    P0: []
+    P1: []
+    P2: []
+  nonblocking_findings:
+    P3: []
+  action: no_action | fix_same_branch | need_human_decision | blocked
+```
+
+分流规则：
+
+- CNB pull 已合并：更新本地队列为 `MERGED`；若对应 CNB Issue 存在，再按 Issue Closure Gate 处理。
+- 没有新审核信号且状态可继续等待：保持 `CNB_REVIEW_OPEN`，记录 `review_status: pending_human_merge`，输出 `HEARTBEAT_OK` 或当前任务 `PASS` 摘要。
+- 存在 P0/P1 或涉及 correctness、data safety、regression、verification、git scope、release、security 的 P2：将任务从 `CNB_REVIEW_OPEN` 拉回 `IN_PROGRESS`，在同一分支最小修复，复跑 VERIFY / REVIEW / HANDOFF_SELF_REVIEW，commit 后推送同一个 CNB pull。
+- 只有 P3 或记录性 P2：写入 `.ai/runs/` 和 CNB pull 评论摘要，不阻塞 handoff。
+- 冲突、状态检查失败或审核意见无法理解：记录 blocker；可自主定位则 `fix_same_branch`，需要产品/权限/合并判断则 `NEED_HUMAN_DECISION`。
+
+禁止：
+
+- 为同一审核意见新建无关分支或新 CNB pull
+- 未读取 CNB comments / reviews / status checks 就宣称审核通过
+- 在审核反馈未清零时关闭 CNB Issue 或把本地队列标记为 `DONE`
+- Agent 自行合并 CNB pull，除非用户明确要求并确认
+
 ---
 
 ## 11. FIX：分级修复
@@ -1058,14 +1116,15 @@ ISSUE = 任务本体
 3. E2E 或等价端到端验证已完成；不适用时已记录原因和替代验证
 4. Review 没有 P0/P1/P2 必修问题；`SIMPLE` 可做 focused self-review，`COMPLEX` 或 `HIGH risk` 必须做 structured review
 5. 如需 CNB handoff，`HANDOFF_SELF_REVIEW` 已通过
-6. 受控 git checkpoint commit 已完成
+6. 如任务处于 `CNB_REVIEW_OPEN` 且被重新唤醒，`CNB_PULL_REVIEW` 已读取 CNB comments、reviews、status checks 和 files，并无阻塞反馈
+7. 受控 git checkpoint commit 已完成
 
 默认分支工作流下，Agent 完成验证、自审、commit、push 并创建 CNB pull 后，任务状态为 `CNB_REVIEW_OPEN`。`CNB_REVIEW_OPEN` 是合法交付终态，表示 Agent work complete, awaiting CNB review/merge。此时：
 
 - 可以输出 `PASS`
 - 本地队列状态保持 `CNB_REVIEW_OPEN`
 - CNB Issue 保持 open，直到 CNB pull merged 或用户明确要求关闭
-- watchdog 不得重复执行该任务，除非 CNB pull 更新、冲突、CI 失败、review comment 或用户明确要求继续处理
+- watchdog 不得重复执行该任务，除非 CNB pull 更新、冲突、CI 失败、review comment 或用户明确要求继续处理；重新执行时先进入 `CNB_PULL_REVIEW`
 
 如果功能测试不完整，即使代码已经修改、构建已经通过，也不得关闭 Issue，不得把任务标记为 Done，不得输出 `PASS`。
 
@@ -1194,6 +1253,8 @@ Done:
 - <完成事项 2>
 Verification:
 - <命令或检查>: <结果>
+CNB Review:
+- <clean | pending_human_merge | fixed_blocking_feedback | not_applicable>
 Commit: <hash>
 CNB Pull: <url or N/A>
 Issue: <closed | open until CNB pull merge | N/A>
