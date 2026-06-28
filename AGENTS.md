@@ -314,6 +314,24 @@ complexity: SIMPLE / COMPLEX
 启动路径的正常验证手段。安全边界从“少启动”调整为“只能通过受控脚本和隔离
 profile/dataDir 启动，绝不连接真实用户库”。
 
+### 8.3.1 Test Ladder Before UI
+
+代码更新必须先验证功能，再检查 UI。不得把启动 Zotero UI 当成默认第一步。
+
+验证顺序必须是：
+
+1. `static/unit smoke`：纯 Node、TypeScript、fixture、harness、构建或目标函数测试，先证明核心逻辑正确。
+2. `functional smoke`：用最小自动化路径验证目标用户行为、数据写入策略、错误反馈或日志 marker；优先不启动 UI。
+3. `scaffold-managed Zotero UI/integration`：只有当用户可见行为、菜单/ProgressWindow/偏好窗口、启动生命周期、真实运行时 API 或隔离写入路径无法由前两层证明时，才执行。
+
+UI / runtime 检查必须满足：
+
+- 本轮 PLAN / VERIFY 先说明前两层测试已经覆盖了什么、还缺什么，所以才需要 UI。
+- 同一任务默认最多启动或重启一次 Zotero UI；优先复用已存在且已证明隔离的 test instance。
+- 如果 UI smoke 已经提供足够证据，不得为了“更保险”反复启动、reload 或 stop Zotero。
+- 不得碰用户日常 Zotero；无法证明隔离时，只能做前两层测试，并输出 `BLOCKED: isolated Zotero UI unavailable` 或 `NEED_HUMAN_DECISION`。
+- UI 检查是功能验证后的最后证据，不替代 unit/functional smoke。
+
 Zotero 插件测试分为三档，必须先声明采用哪一档：
 
 1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。适用于纯函数、静态规则、文档或快速回归，不再作为 UI/运行时任务的默认替代品。
