@@ -2,7 +2,7 @@
 
 <meta>
   <document-id>zotero-update-metadata-runtime-command-policy</document-id>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <project>zotero-update-metadata</project>
   <type>Runtime Command Policy</type>
   <created>2026-06-28</created>
@@ -22,7 +22,8 @@
 ## 允许命令
 
 - 非 UI 检查：`npm run build`、`npm test`、静态 smoke、fixture/harness。
-- 受控 UI / runtime：项目 npm 脚本，例如 `npm run start`、`npm run reload`，以及经过检查的 `npm run test:ui` / `npm run smoke:ui`。
+- 受控 UI / runtime：默认只允许经过项目封装且已记录隔离证据的 `npm run start`、`npm run test:ui`、`npm run smoke:ui`。
+- `reload` / `stop` 类命令默认不得由 Agent 主动使用；只有用户明确要求，或任务记录证明目标是隔离测试实例且 lower tiers insufficient 时，才能通过专门任务调整 hook/spec 白名单。
 
 ## 禁止命令
 
@@ -33,6 +34,8 @@ AI 不得直接执行：
 - 裸 `zotero`
 - 裸 `zotero://...`
 - 绕过项目 npm 脚本直接发送 `zotero://ztoolkit-debug` 或 `-url`
+- 未经任务白名单的 `npm run reload`、`npm run reload:print`、`npm run stop`
+- `node scripts/reload.mjs`、`node scripts/debug-url.mjs`、`node scripts/stop.mjs`
 
 ## Runtime 前置检查
 
