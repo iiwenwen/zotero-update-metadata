@@ -105,7 +105,7 @@ Use focused self-review for simple low-risk tasks. Use `.codex/skills/zotero-rev
 - UI/runtime behavior
 - watchdog/queue/NEXT/PERSIST automation
 - complex or high-risk code tasks
-- PR handoff or Issue closure with behavior risk
+- CNB handoff or Issue closure with behavior risk
 
 P0/P1 findings always block completion. P2 blocks only when it affects correctness, data safety, regression, verification, git scope, release, or security. Fix blocking findings in rounds, then rerun relevant verification and review.
 
@@ -115,22 +115,22 @@ Default branch workflow:
 
 - Do not do task work directly on `main`.
 - Start each `repo-change` or versioned `agent-process-maintenance` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
-- Commit, push, and open a PR from the task branch.
-- Do not merge the PR yourself unless the user explicitly asks and confirms.
+- Commit, push to CNB, and open a CNB pull from the task branch.
+- Do not merge the CNB pull yourself unless the user explicitly asks and confirms.
 - Emergency direct commits to `main` require explicit user confirmation and must be recorded in the run notes.
 
 For completed `repo-change` tasks:
 
 - update `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and useful `.ai/memory/`
 - create one controlled git checkpoint commit
-- create a PR after verification, review, and checkpoint pass
-- close the CNB Issue only after the PR is merged or the user explicitly asks to close it
+- create a CNB pull after verification, review, and checkpoint pass
+- close the CNB Issue only after the CNB pull is merged or the user explicitly asks to close it
 
 For versioned `agent-process-maintenance` changes:
 
 - update local `.ai` task/run records
 - create a controlled git checkpoint commit
-- create a PR after verification, review, and checkpoint pass
+- create a CNB pull after verification, review, and checkpoint pass
 - do not create or close a CNB Issue unless the user explicitly requested remote tracking
 
 Git rules:
@@ -165,8 +165,8 @@ HEARTBEAT_OK
 - necessary tests or equivalent verification passed
 - review has no unresolved blocking findings
 - checkpoint commit completed when required
-- PR opened when branch workflow applies
-- CNB Issue closed only when PR is merged, direct-main flow applies, or the user explicitly requested closure
+- CNB pull opened when branch workflow applies
+- CNB Issue closed only when the CNB pull is merged, direct-main flow applies, or the user explicitly requested closure
 
 `PASS` format:
 
@@ -181,7 +181,7 @@ Commit: <hash or N/A — no repository changes>
 Notes: <none or residual risk>
 ```
 
-For branch workflow, `PASS` may include `State: PR_OPEN`, meaning Agent work is complete and waiting for human review/merge; the Issue can remain open until merge.
+For branch workflow, `PASS` may include `State: CNB_REVIEW_OPEN`, meaning Agent work is complete and waiting for CNB review/merge; the Issue can remain open until merge.
 
 Do not say “basically done”, “should work”, or “probably fine” as completion.
 
