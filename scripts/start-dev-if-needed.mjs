@@ -1,6 +1,7 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { detectZoteroRunning } from "./zotero-process-detection.mjs";
 
 const dryRun = process.env.ZOTERO_START_POLICY_DRY_RUN === "1";
 const runningOverride = process.env.ZOTERO_START_POLICY_RUNNING;
@@ -44,24 +45,3 @@ child.on("error", (err) => {
   console.error(`Unable to start zotero-plugin serve: ${err.message}`);
   process.exit(1);
 });
-
-function detectZoteroRunning() {
-  if (process.platform === "win32") {
-    const result = spawnSync("tasklist", ["/FI", "IMAGENAME eq Zotero.exe"], {
-      encoding: "utf8",
-    });
-    return result.status === 0 && /\bZotero\.exe\b/i.test(result.stdout);
-  }
-
-  const exact = spawnSync("pgrep", ["-x", "Zotero"], {
-    encoding: "utf8",
-  });
-  if (exact.status === 0) {
-    return true;
-  }
-
-  const pathMatch = spawnSync("pgrep", ["-f", "Zotero\\.app"], {
-    encoding: "utf8",
-  });
-  return pathMatch.status === 0;
-}
