@@ -65,9 +65,11 @@ Every non-trivial task must align with 42COG/RCSW using the minimum necessary fi
 - `.42cog/meta/meta.md`
 - `.42cog/real/real.md`
 - `.42cog/cog/cog.md`
-- directly related `spec/` or `.42cog/` docs only when needed
+- directly related `.42cog/spec/`, `spec/`, or `.42cog/work/` docs when the task touches product, design, architecture, coding, QA, dependency, release, or domain behavior
 
 Record affected Cog entities by stable IDs when possible, for example `E1`, `E2`, `E3`.
+
+Keep the AI workflow responsible for orchestration only: task routing, planning gates, verification gates, review, persistence, and handoff. Do not encode full code-domain rules, implementation recipes, test matrices, or product decisions in `AGENTS.md` or `.ai/WORKFLOW.md`; put those in the relevant 42COG/spec document and reference them from the workflow.
 
 ## 6. Zotero Safety And Test Ladder
 
@@ -185,6 +187,6 @@ Keep `AGENTS.md` short and practical. Add durable detail elsewhere:
 - `.ai/tasks/` and `.ai/runs/`: local task/run records
 - `.ai/memory/`: reusable local lessons
 - `.42cog/`: Real/Cog/RCSW project model
-- `spec/`: product, design, architecture, QA specifications
+- `.42cog/spec/` and `spec/`: product, design, architecture, coding, QA, dependency, release, and domain specifications
 
-When this file grows because of repeated edge cases, extract the edge-case procedure into a skill, local workflow doc, or task-specific reference, then leave only the trigger and hard constraint here.
+When this file grows because of repeated edge cases, extract the edge-case procedure into a skill, local workflow doc, task-specific reference, or a 42COG/spec document, then leave only the trigger and hard constraint here.
