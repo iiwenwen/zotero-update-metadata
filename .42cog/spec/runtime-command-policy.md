@@ -2,7 +2,7 @@
 
 <meta>
   <document-id>zotero-update-metadata-runtime-command-policy</document-id>
-  <version>1.0.1</version>
+  <version>1.0.2</version>
   <project>zotero-update-metadata</project>
   <type>Runtime Command Policy</type>
   <created>2026-06-28</created>
@@ -23,6 +23,7 @@
 
 - 非 UI 检查：`npm run build`、`npm test`、静态 smoke、fixture/harness。
 - 受控 UI / runtime：默认只允许经过项目封装且已记录隔离证据的 `npm run start`、`npm run test:ui`、`npm run smoke:ui`。
+- 开发热更新：`npm run start` / `npm run dev` 只允许作为一次性 guard 入口使用。执行前先检查 Zotero 是否已经运行；未运行才启动 scaffold serve，已运行则不触碰 Zotero，后续源码变化依赖 scaffold 热更新。
 - `reload` / `stop` 类命令默认不得由 Agent 主动使用；只有用户明确要求，或任务记录证明目标是隔离测试实例且 lower tiers insufficient 时，才能通过专门任务调整 hook/spec 白名单。
 
 ## 禁止命令
@@ -46,5 +47,6 @@ AI 不得直接执行：
 - profile/data directory 或 scaffold test runner 隔离证据
 - 是否写入 `E1 Zotero 条目` 或 `E3 插件配置`
 - 失败后的退出、恢复或阻塞方式
+- 若使用开发启动入口，必须记录这是“一次性检查”：Zotero 已运行时不得再次启动、reload 或 stop。
 
 无法证明隔离时，只能执行 `docs_or_process`、`pure_build_or_types` 或 `pure_logic` tier，不得声称 runtime 验证完成。

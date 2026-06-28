@@ -40,13 +40,37 @@ Use this code under the AGPL. No warranty is provided. Follow the laws in your r
 Copy `.env.example` to `.env` and point `ZOTERO_PLUGIN_PROFILE_PATH` and
 `ZOTERO_PLUGIN_DATA_DIR` at an isolated development profile and data directory.
 
-Run `npm run start` to build the add-on with `zotero-plugin-scaffold`, start
-Zotero with that configured development profile, and watch `src/` plus `addon/`
-changes. The old standalone reload shortcuts are no longer exposed because a
-bare `zotero://ztoolkit-debug` URL can be handled by the wrong Zotero profile.
+Run `npm start` or `npm run dev` once to enter the scaffold-managed hot reload
+flow. The start script first checks whether Zotero is already running. If it is
+running, the script leaves Zotero untouched and exits; if it is not running, the
+script delegates to `zotero-plugin serve` to build the add-on, start the
+configured development profile, and watch `src/` plus `addon/` changes. Keep the
+scaffold process running for hot reload instead of restarting Zotero after each
+change.
 
-Run `npm run build` for a production XPI in `build/`, or `npm test` for the
-Node smoke test that does not start Zotero.
+The old standalone reload shortcuts are no longer exposed because a bare
+`zotero://ztoolkit-debug` URL can be handled by the wrong Zotero profile.
+
+Use the workflow scripts as separate gates:
+
+- `npm run format:check`: Prettier for plugin code, generated typings, and
+  root project config.
+- `npm run lint:check`: `format:check`, then ESLint for plugin code only
+  (`src/`, `test/`, and `addon/`). Generated output, scaffold profiles, logs,
+  and agent workflow files are not part of the default lint gate.
+- `npm run build:xpi`: scaffold production XPI in `build/`.
+- `npm run typecheck`: TypeScript checking without rebuilding the XPI.
+- `npm run build`: `build:xpi`, then `typecheck`.
+- `npm run test:unit`: Node smoke tests that do not start Zotero.
+- `npm run test:ui`: Zotero runtime smoke tests in the scaffold test profile.
+  Use this for UI, preference, and Zotero data-write behavior changes.
+- `npm run check`: fast pre-PR gate, running lint, build, and unit smoke.
+- `npm run verify`: full local gate, running `check` and the Zotero UI smoke.
+- `npm run release`: version bump flow. The release hook runs `check` before
+  bumping and rebuilds afterward so the XPI metadata uses the new version. This
+  project publishes through CNB release flow, not GitHub release automation.
+- `npm run release:dry-run`: preview the version bump flow without writing a
+  release.
 
 Maintainer-specific agent workflow instructions are kept out of this
 user-facing README. See `AGENTS.md` for Codex and automation guidance.

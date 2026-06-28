@@ -25,6 +25,7 @@ Use this skill to prove a change at the lowest safe verification tier before esc
 - Zotero plugin code, UI/runtime behavior, preferences, or metadata writes change.
 - A task needs a `verification_tier` decision or evidence plan.
 - A command could launch, reload, stop, or otherwise control Zotero.
+- A development task asks whether Zotero should be started or restarted.
 - Agent workflow, hook, or QA changes affect Zotero verification policy.
 
 ## When NOT to Use
@@ -64,6 +65,8 @@ Run the lowest tier that proves the task:
 
 Do not start Zotero merely to feel safer. If the task is docs/process only, record `E2E: not applicable` and use structured text checks, diff checks, staged scope checks, and review.
 
+For scaffold-managed development, treat `npm run start` / `npm run dev` as a one-time guard: check whether Zotero is already running; if it is running, leave it untouched and rely on scaffold hot reload. Only start scaffold serve when Zotero is not running.
+
 ## Workflow
 
 1. Classify the touched behavior and read only the matching spec files.
@@ -83,6 +86,7 @@ Before any command that may launch or reload Zotero, record:
 - isolation evidence for profile/data directory or scaffold runner
 - whether `E1 Zotero 条目` or `E3 插件配置` can be written
 - recovery or stop condition if isolation cannot be proven
+- whether this is the one-time scaffold start guard; if Zotero is already running, do not restart, reload, or stop it
 
 Never use a real user Zotero profile or library. If isolation is unknown, stop with `BLOCKED: isolated test library unavailable` or `NEED_HUMAN_DECISION`.
 

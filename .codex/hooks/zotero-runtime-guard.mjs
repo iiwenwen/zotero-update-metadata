@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global Buffer, console, process */
 
 let payload = {};
 
@@ -25,7 +26,9 @@ if (!command) {
   process.exit(0);
 }
 
-const commandSurface = stripNonShellHereDocs(command).replace(/\s+/g, " ").trim();
+const commandSurface = stripNonShellHereDocs(command)
+  .replace(/\s+/g, " ")
+  .trim();
 const lower = commandSurface.toLowerCase();
 
 const denyRules = [
@@ -40,7 +43,8 @@ const denyRules = [
       "Direct `open -a Zotero` is blocked. Prove isolation and use an allowed project npm script.",
   },
   {
-    pattern: /(^|[;&|]\s*)open\s+(-[^\s]+\s+)*(-b\s+org\.zotero\.zotero|\/Applications\/Zotero\.app)(\s|$)/i,
+    pattern:
+      /(^|[;&|]\s*)open\s+(-[^\s]+\s+)*(-b\s+org\.zotero\.zotero|\/Applications\/Zotero\.app)(\s|$)/i,
     reason:
       "Direct Zotero app launch is blocked. Prove isolation and use an allowed project npm script.",
   },
@@ -65,7 +69,8 @@ const denyRules = [
       "Raw ztoolkit debug URLs are blocked. Use scaffold-managed verification instead.",
   },
   {
-    pattern: /(^|[;&|]\s*)(npm|pnpm|yarn|bun)\s+(run\s+)?(reload|reload:print|stop)(\s|$)/i,
+    pattern:
+      /(^|[;&|]\s*)(npm|pnpm|yarn|bun)\s+(run\s+)?(reload|reload:print|stop)(\s|$)/i,
     reason:
       "Reload/stop runtime scripts are blocked by default to avoid repeatedly controlling the user's Zotero instance.",
   },
@@ -88,11 +93,11 @@ for (const rule of denyRules) {
 }
 
 const runtimeReminder =
-  /(^|[;&|]\s*)(npm|pnpm|yarn|bun)\s+(run\s+)?(start|test|test:ui|smoke:ui)(\s|$)/i;
+  /(^|[;&|]\s*)(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|test|test:ui|smoke:ui)(\s|$)/i;
 
 if (runtimeReminder.test(lower)) {
   allowWithContext(
-    "Before running Zotero runtime/UI checks, record the verification tier, why lower tiers are insufficient, and isolation evidence for the test profile or scaffold runner.",
+    "Before running Zotero runtime/UI checks, record the verification tier, why lower tiers are insufficient, and isolation evidence. For npm start/dev, check once: if Zotero is already running, leave it untouched and rely on scaffold hot reload.",
   );
 }
 

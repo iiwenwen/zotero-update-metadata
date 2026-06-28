@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const packageJsonPath = path.join(repoRoot, "package.json");
 const scaffoldConfigPath = path.join(repoRoot, "zotero-plugin.config.ts");
 const scriptsDir = path.join(repoRoot, "scripts");
+const runtimeGuardPath = path.join(
+  repoRoot,
+  ".codex",
+  "hooks",
+  "zotero-runtime-guard.mjs",
+);
 const thisScript = path.basename(fileURLToPath(import.meta.url));
 
 const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
@@ -51,8 +59,43 @@ const allowedExecutableTokensByLabel = {
 
 assert.equal(
   packageScripts.start,
-  "zotero-plugin serve",
-  "npm run start must remain the scaffold-managed development entry",
+  "node scripts/start-dev-if-needed.mjs",
+  "npm run start must check Zotero once before delegating to scaffold serve",
+);
+assert.equal(
+  packageScripts.dev,
+  "npm run start",
+  "npm run dev must reuse the guarded start entry",
+);
+
+const guardedStartScript = readFileSync(
+  path.join(scriptsDir, "start-dev-if-needed.mjs"),
+  "utf8",
+);
+assert.match(
+  guardedStartScript,
+  /ZOTERO_START_POLICY_RUNNING/,
+  "guarded start script should expose a smoke-testable running override",
+);
+assert.match(
+  guardedStartScript,
+  /zotero-plugin[\s\S]*serve/,
+  "guarded start script should delegate startup to scaffold serve only when needed",
+);
+
+const devGuardResult = spawnSync(process.execPath, [runtimeGuardPath], {
+  input: JSON.stringify({ tool_input: { cmd: "npm run dev" } }),
+  encoding: "utf8",
+});
+assert.equal(
+  devGuardResult.status,
+  0,
+  ".codex runtime guard should accept npm run dev for contextual guidance",
+);
+assert.match(
+  devGuardResult.stdout,
+  /already running[\s\S]*hot reload/,
+  ".codex runtime guard should remind that npm run dev leaves running Zotero untouched",
 );
 
 for (const scriptName of Object.keys(packageScripts)) {
