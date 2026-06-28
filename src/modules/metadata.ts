@@ -76,6 +76,8 @@ export type MetadataSaveSettings = {
   collections?: number[];
 };
 
+export type MetadataOperationSchema = "save" | "update";
+
 export type SaveNewMetadataItemResult = {
   status: "saved";
   item: Zotero.Item;
@@ -110,6 +112,7 @@ export type MetadataRunContext = {
   win?: _ZoteroTypes.MainWindow;
   items?: Zotero.Item[];
   collectionID?: number;
+  schema?: MetadataOperationSchema;
 };
 
 type MainWindowWithPane = _ZoteroTypes.MainWindow & {
@@ -175,17 +178,20 @@ export async function getMeta(context: MetadataRunContext = {}) {
   const items = (context.items ?? []).filter((item) => {
     return item.isRegularItem();
   });
-  const settings = getSettings(context.collectionID);
-  const schema = getPref("schema");
+  const schema = normalizeMetadataOperationSchema(
+    context.schema ?? getPref("schema"),
+  );
+  const settings = getSettings(context.collectionID, schema);
   const translationSettings =
     schema === "save" ? buildMetadataTranslationSettings(settings) : settings;
-  const popWin = new ztoolkit.ProgressWindow(
-    getString("itemmenu-updateMetadata-label"),
-    {
-      closeOnClick: true,
-      closeTime: METADATA_RESULT_CLOSE_TIME_MS,
-    },
-  );
+  const progressTitle =
+    schema === "save"
+      ? getString("itemmenu-saveNewMetadata-label")
+      : getString("itemmenu-updateExistingMetadata-label");
+  const popWin = new ztoolkit.ProgressWindow(progressTitle, {
+    closeOnClick: true,
+    closeTime: METADATA_RESULT_CLOSE_TIME_MS,
+  });
 
   popWin
     .createLine({
@@ -334,14 +340,22 @@ export async function getMeta(context: MetadataRunContext = {}) {
   popWin.startCloseTimer(METADATA_RESULT_CLOSE_TIME_MS);
 }
 
-function getSettings(collectionID?: number): MetadataSaveSettings {
-  const options = getPref("schema");
+export function normalizeMetadataOperationSchema(
+  schema: unknown,
+): MetadataOperationSchema {
+  return schema === "save" ? "save" : "update";
+}
+
+function getSettings(
+  collectionID?: number,
+  schema = normalizeMetadataOperationSchema(getPref("schema")),
+): MetadataSaveSettings {
   const attachmentSaveStrategy = getAttachmentSaveStrategy();
 
   // 创建返回对象的基本结构
   const settings: MetadataSaveSettings = {
     saveAttachments: attachmentSaveStrategy !== "none",
-    libraryID: options === "save" ? Zotero.Libraries.userLibraryID : false,
+    libraryID: schema === "save" ? Zotero.Libraries.userLibraryID : false,
   };
 
   // 如果 coll 存在，才添加到 settings 中

@@ -11,6 +11,7 @@ const attachmentPreferencesOutfile = path.join(
   tmp,
   "attachmentPreferences.cjs",
 );
+const menuOutfile = path.join(tmp, "menu.cjs");
 const require = createRequire(import.meta.url);
 
 try {
@@ -28,6 +29,14 @@ try {
     format: "cjs",
     platform: "node",
     outfile: attachmentPreferencesOutfile,
+    logLevel: "silent",
+  });
+  await build({
+    entryPoints: ["src/modules/menu.ts"],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    outfile: menuOutfile,
     logLevel: "silent",
   });
 
@@ -49,6 +58,7 @@ try {
     METADATA_RESULT_CLOSE_TIME_MS,
     mergeExtra,
     normalizeAttachmentSaveStrategy,
+    normalizeMetadataOperationSchema,
     shouldConfirmBeforeMetadataUpdate,
     shouldTryAttachmentSave,
     saveNewMetadataItem,
@@ -58,6 +68,7 @@ try {
   const { setConfiguredAttachmentSaveStrategy } = require(
     attachmentPreferencesOutfile,
   );
+  const { METADATA_MENU_ACTIONS } = require(menuOutfile);
 
   globalThis.ztoolkit = {
     log() {},
@@ -111,6 +122,9 @@ try {
   assert.equal(isNoTitleSpecifiedError(new Error("No title specified")), true);
   assert.equal(isNoTitleSpecifiedError(new Error("Network failed")), false);
   assert.equal(METADATA_RESULT_CLOSE_TIME_MS, 8000);
+  assert.equal(normalizeMetadataOperationSchema("save"), "save");
+  assert.equal(normalizeMetadataOperationSchema("update"), "update");
+  assert.equal(normalizeMetadataOperationSchema("bad-value"), "update");
   assert.equal(lowersDatePrecision("2020-05-06", "2020"), true);
   assert.equal(lowersDatePrecision("2020", "2020-05-06"), false);
   assert.deepEqual(
@@ -823,10 +837,59 @@ try {
 
   assertPreferenceWindowLocalization();
   assertPreferenceCheckboxBindings();
+  assertMenuActionContract(METADATA_MENU_ACTIONS);
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+function assertMenuActionContract(actions) {
+  assert.deepEqual(actions, [
+    {
+      id: "updateMetadata-action-update",
+      labelKey: "itemmenu-updateExistingMetadata-label",
+      schema: "update",
+    },
+    {
+      id: "updateMetadata-action-save",
+      labelKey: "itemmenu-saveNewMetadata-label",
+      schema: "save",
+    },
+  ]);
+
+  const menuSource = readFileSync("src/modules/menu.ts", "utf8");
+  assert.match(
+    menuSource,
+    /icon:\s*menuIcon/,
+    "MenuManager entries should use the plugin icon",
+  );
+  assert.match(
+    menuSource,
+    /runMetadataAction\(win,\s*action\.schema/,
+    "menu commands should pass an explicit action schema to getMeta",
+  );
+  assert.match(
+    menuSource,
+    /items:\s*items\s*\?\?\s*getSelectedItems\(win\)/,
+    "fallback menu commands should use the current Zotero selection",
+  );
+  assert.match(
+    menuSource,
+    /setAttribute\("image",\s*menuIcon\)/,
+    "fallback XUL entries should display the plugin icon",
+  );
+
+  for (const locale of ["en-US", "zh-CN"]) {
+    const ftl = readFileSync(`addon/locale/${locale}/addon.ftl`, "utf8");
+    for (const action of actions) {
+      assert.match(
+        ftl,
+        new RegExp(`^${action.labelKey}\\s*=`, "m"),
+        `${action.labelKey} should exist in ${locale} addon.ftl`,
+      );
+    }
+  }
 }
 
 function assertPreferenceWindowLocalization() {

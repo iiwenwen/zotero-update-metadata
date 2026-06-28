@@ -1,11 +1,35 @@
 import { config } from "../../package.json";
 import { getString } from "../utils/locale";
-import { getMeta, isSupportedMetadataURL } from "./metadata";
+import {
+  getMeta,
+  isSupportedMetadataURL,
+  type MetadataOperationSchema,
+} from "./metadata";
 
 const MENU_ID = "updateMetadata";
+const MENU_ACTION_BASE_ID = `${MENU_ID}-action`;
 const ITEM_MENU_IDS = ["zotero-itemmenu", "zotero-itemmenu-popup"];
 
-let registeredMenuItem: Element | null = null;
+export type MetadataMenuAction = {
+  id: string;
+  labelKey: string;
+  schema: MetadataOperationSchema;
+};
+
+export const METADATA_MENU_ACTIONS: MetadataMenuAction[] = [
+  {
+    id: `${MENU_ACTION_BASE_ID}-update`,
+    labelKey: "itemmenu-updateExistingMetadata-label",
+    schema: "update",
+  },
+  {
+    id: `${MENU_ACTION_BASE_ID}-save`,
+    labelKey: "itemmenu-saveNewMetadata-label",
+    schema: "save",
+  },
+];
+
+let registeredMenuItems: Element[] = [];
 let registeredMenuKey: string | null = null;
 let selectionGuardTarget: Element | null = null;
 let selectionGuardListener: ((event: Event) => void) | null = null;
@@ -52,26 +76,18 @@ export function registerMenu(win: _ZoteroTypes.MainWindow) {
       menuID: MENU_ID,
       pluginID: config.addonID,
       target: "main/library/item",
-      menus: [
-        {
+      menus: METADATA_MENU_ACTIONS.map((action) => {
+        return {
           menuType: "menuitem",
           icon: menuIcon,
           onShowing: (_event: Event, context: MenuContext) => {
-            context.menuElem?.setAttribute("id", MENU_ID);
-            context.menuElem?.setAttribute(
-              "label",
-              getString("itemmenu-updateMetadata-label"),
-            );
+            configureMenuElement(context.menuElem, action, menuIcon);
             updateMenuDisabledState(win, context);
           },
           onCommand: (_event: Event, context: MenuContext = {}) =>
-            void getMeta({
-              win,
-              items: context.items,
-              collectionID: getSelectedCollectionID(win),
-            }),
-        },
-      ],
+            void runMetadataAction(win, action.schema, context.items),
+        };
+      }),
     });
 
     if (registered) {
@@ -88,6 +104,9 @@ export function registerMenu(win: _ZoteroTypes.MainWindow) {
 function registerFallbackMenu(win: _ZoteroTypes.MainWindow, menuIcon: string) {
   const doc = win.document;
   doc.getElementById(MENU_ID)?.remove();
+  METADATA_MENU_ACTIONS.forEach((action) => {
+    doc.getElementById(action.id)?.remove();
+  });
 
   const itemContextMenu = findItemContextMenu(doc);
   if (!itemContextMenu) {
@@ -95,23 +114,42 @@ function registerFallbackMenu(win: _ZoteroTypes.MainWindow, menuIcon: string) {
     return;
   }
 
-  const menuItem = createMenuItem(doc);
-  menuItem.setAttribute("id", MENU_ID);
-  menuItem.setAttribute("label", getString("itemmenu-updateMetadata-label"));
-  menuItem.setAttribute("class", "menuitem-iconic");
-  menuItem.setAttribute("image", menuIcon);
-  menuItem.addEventListener(
-    "command",
-    () =>
-      void getMeta({
-        win,
-        collectionID: getSelectedCollectionID(win),
-      }),
-  );
+  registeredMenuItems = METADATA_MENU_ACTIONS.map((action) => {
+    const menuItem = createMenuItem(doc);
+    configureMenuElement(menuItem, action, menuIcon);
+    menuItem.addEventListener(
+      "command",
+      () => void runMetadataAction(win, action.schema),
+    );
+    itemContextMenu.append(menuItem);
+    return menuItem;
+  });
 
-  itemContextMenu.append(menuItem);
-  registeredMenuItem = menuItem;
   updateMenuDisabledState(win);
+}
+
+function configureMenuElement(
+  menuItem: Element | undefined,
+  action: MetadataMenuAction,
+  menuIcon: string,
+) {
+  menuItem?.setAttribute("id", action.id);
+  menuItem?.setAttribute("label", getString(action.labelKey));
+  menuItem?.setAttribute("class", "menuitem-iconic");
+  menuItem?.setAttribute("image", menuIcon);
+}
+
+function runMetadataAction(
+  win: _ZoteroTypes.MainWindow,
+  schema: MetadataOperationSchema,
+  items?: Zotero.Item[],
+) {
+  return getMeta({
+    win,
+    items: items ?? getSelectedItems(win),
+    schema,
+    collectionID: getSelectedCollectionID(win),
+  });
 }
 
 function getSelectedItems(win: _ZoteroTypes.MainWindow) {
@@ -145,17 +183,21 @@ function updateMenuDisabledState(
   context?: MenuContext,
 ) {
   const enabled = canUpdateSelectedItems(win, context);
-  const menuItem = context?.menuElem ?? win.document.getElementById(MENU_ID);
+  const menuItems = context?.menuElem
+    ? [context.menuElem]
+    : METADATA_MENU_ACTIONS.map((action) =>
+        win.document.getElementById(action.id),
+      ).filter((item): item is Element => Boolean(item));
 
   context?.setVisible?.(true);
   context?.setEnabled?.(enabled);
 
   if (enabled) {
-    menuItem?.removeAttribute("disabled");
+    menuItems.forEach((menuItem) => menuItem.removeAttribute("disabled"));
     return;
   }
 
-  menuItem?.setAttribute("disabled", "true");
+  menuItems.forEach((menuItem) => menuItem.setAttribute("disabled", "true"));
 }
 
 export async function selectoritem(win: _ZoteroTypes.MainWindow) {
@@ -186,9 +228,12 @@ export function unregisterMenu(win?: _ZoteroTypes.MainWindow) {
     registeredMenuKey = null;
   }
 
-  registeredMenuItem?.remove();
-  registeredMenuItem = null;
+  registeredMenuItems.forEach((menuItem) => menuItem.remove());
+  registeredMenuItems = [];
   win?.document.getElementById(MENU_ID)?.remove();
+  METADATA_MENU_ACTIONS.forEach((action) => {
+    win?.document.getElementById(action.id)?.remove();
+  });
 
   if (selectionGuardTarget && selectionGuardListener) {
     selectionGuardTarget.removeEventListener(

@@ -1,5 +1,7 @@
 pref-title = 更新元数据
 itemmenu-updateMetadata-label = 更新元数据
+itemmenu-updateExistingMetadata-label = 更新现有条目
+itemmenu-saveNewMetadata-label = 保存新条目
 itemmenu-test-label = 测试
 
 ## 设置-模式

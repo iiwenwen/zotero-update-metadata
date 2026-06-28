@@ -3,6 +3,8 @@ startup-finish = Addon is ready
 
 pref-title= Update Metadata
 itemmenu-updateMetadata-label = Update Metadata
+itemmenu-updateExistingMetadata-label = Update Existing Item
+itemmenu-saveNewMetadata-label = Save New Item
 
 ## 设置-模式
 schema-saveItem = saveItem
