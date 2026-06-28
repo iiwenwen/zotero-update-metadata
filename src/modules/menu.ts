@@ -10,6 +10,11 @@ const MENU_ID = "updateMetadata";
 const MENU_ACTION_BASE_ID = `${MENU_ID}-action`;
 const ITEM_MENU_IDS = ["zotero-itemmenu", "zotero-itemmenu-popup"];
 
+export const METADATA_MENU_PARENT = {
+  id: MENU_ID,
+  labelKey: "itemmenu-updateMetadata-label",
+} as const;
+
 export type MetadataMenuAction = {
   id: string;
   labelKey: string;
@@ -60,6 +65,14 @@ function createMenuItem(doc: Document) {
   return ztoolkit.createXULElement(doc, "menuitem");
 }
 
+function createSubmenu(doc: Document) {
+  return ztoolkit.createXULElement(doc, "menu");
+}
+
+function createMenuPopup(doc: Document) {
+  return ztoolkit.createXULElement(doc, "menupopup");
+}
+
 function isRegularZoteroItem(item: Zotero.Item) {
   return typeof item?.isRegularItem === "function" && item.isRegularItem();
 }
@@ -76,18 +89,27 @@ export function registerMenu(win: _ZoteroTypes.MainWindow) {
       menuID: MENU_ID,
       pluginID: config.addonID,
       target: "main/library/item",
-      menus: METADATA_MENU_ACTIONS.map((action) => {
-        return {
-          menuType: "menuitem",
+      menus: [
+        {
+          menuType: "submenu",
           icon: menuIcon,
           onShowing: (_event: Event, context: MenuContext) => {
-            configureMenuElement(context.menuElem, action, menuIcon);
+            configureParentMenuElement(context.menuElem, menuIcon);
             updateMenuDisabledState(win, context);
           },
-          onCommand: (_event: Event, context: MenuContext = {}) =>
-            void runMetadataAction(win, action.schema, context.items),
-        };
-      }),
+          menus: METADATA_MENU_ACTIONS.map((action) => {
+            return {
+              menuType: "menuitem",
+              onShowing: (_event: Event, context: MenuContext) => {
+                configureActionMenuElement(context.menuElem, action);
+                updateMenuDisabledState(win, context);
+              },
+              onCommand: (_event: Event, context: MenuContext = {}) =>
+                void runMetadataAction(win, action.schema, context.items),
+            };
+          }),
+        },
+      ],
     });
 
     if (registered) {
@@ -114,29 +136,43 @@ function registerFallbackMenu(win: _ZoteroTypes.MainWindow, menuIcon: string) {
     return;
   }
 
-  registeredMenuItems = METADATA_MENU_ACTIONS.map((action) => {
+  const parentMenu = createSubmenu(doc);
+  configureParentMenuElement(parentMenu, menuIcon);
+
+  const menuPopup = createMenuPopup(doc);
+  METADATA_MENU_ACTIONS.forEach((action) => {
     const menuItem = createMenuItem(doc);
-    configureMenuElement(menuItem, action, menuIcon);
+    configureActionMenuElement(menuItem, action);
     menuItem.addEventListener(
       "command",
       () => void runMetadataAction(win, action.schema),
     );
-    itemContextMenu.append(menuItem);
-    return menuItem;
+    menuPopup.append(menuItem);
   });
+
+  parentMenu.append(menuPopup);
+  itemContextMenu.append(parentMenu);
+  registeredMenuItems = [parentMenu];
 
   updateMenuDisabledState(win);
 }
 
-function configureMenuElement(
+function configureParentMenuElement(
+  menuItem: Element | undefined,
+  menuIcon: string,
+) {
+  menuItem?.setAttribute("id", METADATA_MENU_PARENT.id);
+  menuItem?.setAttribute("label", getString(METADATA_MENU_PARENT.labelKey));
+  menuItem?.setAttribute("class", "menu-iconic");
+  menuItem?.setAttribute("image", menuIcon);
+}
+
+function configureActionMenuElement(
   menuItem: Element | undefined,
   action: MetadataMenuAction,
-  menuIcon: string,
 ) {
   menuItem?.setAttribute("id", action.id);
   menuItem?.setAttribute("label", getString(action.labelKey));
-  menuItem?.setAttribute("class", "menuitem-iconic");
-  menuItem?.setAttribute("image", menuIcon);
 }
 
 function runMetadataAction(
@@ -185,9 +221,12 @@ function updateMenuDisabledState(
   const enabled = canUpdateSelectedItems(win, context);
   const menuItems = context?.menuElem
     ? [context.menuElem]
-    : METADATA_MENU_ACTIONS.map((action) =>
-        win.document.getElementById(action.id),
-      ).filter((item): item is Element => Boolean(item));
+    : [
+        win.document.getElementById(METADATA_MENU_PARENT.id),
+        ...METADATA_MENU_ACTIONS.map((action) =>
+          win.document.getElementById(action.id),
+        ),
+      ].filter((item): item is Element => Boolean(item));
 
   context?.setVisible?.(true);
   context?.setEnabled?.(enabled);
