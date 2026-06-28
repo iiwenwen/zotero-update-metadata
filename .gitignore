@@ -18,11 +18,11 @@ dist/
 .42plugin/
 .clj-kondo/.cache/
 .lsp/.cache/
-.42cog/
-.ai/
-.codex/
-.ai/
-.42cog/
+.ai/*
+!.ai/WORKFLOW.md
+.42cog/*
+!.42cog/spec/
+!.42cog/spec/**
 .codex/
 agents.md
 .scaffold

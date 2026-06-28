@@ -69,28 +69,30 @@ Every non-trivial task must align with 42COG/RCSW using the minimum necessary fi
 
 Record affected Cog entities by stable IDs when possible, for example `E1`, `E2`, `E3`.
 
+Every new or updated `.42cog/spec/**` document must reference `.42cog/cog/cog.md` and name the related agents, entities, flows, and weights.
+
 Keep the AI workflow responsible for orchestration only: task routing, planning gates, verification gates, review, persistence, and handoff. Do not encode full code-domain rules, implementation recipes, test matrices, or product decisions in `AGENTS.md` or `.ai/WORKFLOW.md`; put those in the relevant 42COG/spec document and reference them from the workflow.
 
 ## 6. Zotero Safety And Test Ladder
 
-Code changes must prove function before UI.
+Code changes must prove function before UI. The detailed verification matrix lives in `.42cog/spec/qa-zotero-verification.md`; this file only keeps the hard trigger.
 
-Validation order:
+Every task must choose and record a `verification_tier`:
 
-1. `static/unit smoke`: Node, TypeScript, fixture, harness, target function, build, lint, or formatting checks. No Zotero UI.
-2. `functional smoke`: automated check for the target behavior, data strategy, error feedback, or log marker. Prefer no UI.
-3. `scaffold-managed Zotero UI/integration`: only when the first two layers cannot prove a required user-visible or runtime path.
+- `docs_or_process`
+- `pure_build_or_types`
+- `pure_logic`
+- `user_visible_plugin_behavior`
+- `zotero_data_write_or_preferences`
+- `release_or_dependency`
 
-Rules for Zotero UI/runtime:
+Spec routing:
 
-- Never use a real user Zotero profile/library.
-- Prove the profile/data directory is isolated before any UI/runtime command.
-- Prefer reusing an already proven isolated test instance.
-- In one task, start or restart Zotero UI at most once by default.
-- Do not repeat UI smoke just to feel safer once it has enough evidence.
-- If isolation cannot be proven, stop with `BLOCKED: isolated Zotero UI unavailable` or `NEED_HUMAN_DECISION`.
-
-Allowed runtime paths are project-managed npm scripts only. Do not directly run `/Applications/Zotero.app`, `open -a Zotero`, bare `zotero`, bare `zotero://...`, or raw `zotero://ztoolkit-debug` / `-url` commands.
+- Zotero data writes or preferences: `.42cog/spec/zotero-data-safety.md`
+- Zotero runtime/UI commands: `.42cog/spec/runtime-command-policy.md`
+- User-visible plugin behavior: `.42cog/spec/plugin-behavior-contracts.md`
+- QA matrix and Test Ladder: `.42cog/spec/qa-zotero-verification.md`
+- Dependency/release policy: `.42cog/spec/dependency-policy.md`
 
 ## 7. Review And Fix
 
@@ -105,7 +107,7 @@ Use focused self-review for simple low-risk tasks. Use `.codex/skills/zotero-rev
 - complex or high-risk code tasks
 - PR handoff or Issue closure with behavior risk
 
-P0/P1/P2 findings block completion. Fix in rounds, then rerun relevant verification and review.
+P0/P1 findings always block completion. P2 blocks only when it affects correctness, data safety, regression, verification, git scope, release, or security. Fix blocking findings in rounds, then rerun relevant verification and review.
 
 ## 8. Git And Persistence
 
@@ -135,7 +137,9 @@ Git rules:
 
 - never use `git add .` or `git add -A`
 - stage only Commit Scope files
-- do not stage `.ai/`, `.42cog/`, `.codex/`, logs, caches, env files, secrets, or local sessions unless explicitly versioned by the task
+- `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` are `.ai local runtime state`: update them when needed, but do not stage them
+- versioned process/spec assets may include `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/prompts/**`, `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
+- do not stage logs, caches, env files, secrets, local sessions, or unrelated ignored files
 - run `git diff --cached --name-only` and `git diff --cached --check` before commit
 - if in-scope files mix user changes with task changes, stop with `NEED_HUMAN_DECISION`
 
@@ -159,9 +163,10 @@ HEARTBEAT_OK
 - non-goals preserved
 - acceptance criteria met
 - necessary tests or equivalent verification passed
-- review has no unresolved P0/P1/P2
+- review has no unresolved blocking findings
 - checkpoint commit completed when required
-- CNB Issue closed when required
+- PR opened when branch workflow applies
+- CNB Issue closed only when PR is merged, direct-main flow applies, or the user explicitly requested closure
 
 `PASS` format:
 
@@ -175,6 +180,8 @@ Verification:
 Commit: <hash or N/A — no repository changes>
 Notes: <none or residual risk>
 ```
+
+For branch workflow, `PASS` may include `State: PR_OPEN`, meaning Agent work is complete and waiting for human review/merge; the Issue can remain open until merge.
 
 Do not say “basically done”, “should work”, or “probably fine” as completion.
 
