@@ -8,6 +8,8 @@ const logPath = path.join(logDir, "zotero-ui-smoke.log");
 const scaffoldConfigPath = path.resolve("scripts/zotero-cmd.json");
 const requiredLogMarkers = [
   "metadata-runtime-translation-settings",
+  "metadata-runtime-confirm-canceled",
+  "metadata-runtime-confirm-applied",
   "metadata-runtime-save-new",
   "savedItemID",
   "attachmentCount",
