@@ -68,9 +68,17 @@ try {
   const { setConfiguredAttachmentSaveStrategy } = require(
     attachmentPreferencesOutfile,
   );
-  const { METADATA_MENU_ACTIONS } = require(menuOutfile);
+  const {
+    METADATA_MENU_ACTIONS,
+    METADATA_MENU_PARENT,
+    registerMenu,
+    unregisterMenu,
+  } = require(menuOutfile);
 
   globalThis.ztoolkit = {
+    createXULElement(doc, tag) {
+      return doc.createElement(tag);
+    },
     log() {},
   };
 
@@ -837,14 +845,21 @@ try {
 
   assertPreferenceWindowLocalization();
   assertPreferenceCheckboxBindings();
-  assertMenuActionContract(METADATA_MENU_ACTIONS);
+  assertMenuActionContract(METADATA_MENU_PARENT, METADATA_MENU_ACTIONS, {
+    registerMenu,
+    unregisterMenu,
+  });
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-function assertMenuActionContract(actions) {
+function assertMenuActionContract(parent, actions, menuApi) {
+  assert.deepEqual(parent, {
+    id: "updateMetadata",
+    labelKey: "itemmenu-updateMetadata-label",
+  });
   assert.deepEqual(actions, [
     {
       id: "updateMetadata-action-update",
@@ -861,8 +876,28 @@ function assertMenuActionContract(actions) {
   const menuSource = readFileSync("src/modules/menu.ts", "utf8");
   assert.match(
     menuSource,
+    /menuType:\s*"submenu"/,
+    "MenuManager should register one parent submenu",
+  );
+  assert.match(
+    menuSource,
+    /menus:\s*METADATA_MENU_ACTIONS\.map/,
+    "MenuManager submenu should contain metadata action children",
+  );
+  assert.match(
+    menuSource,
+    /createSubmenu\(doc\)/,
+    "fallback menu should create one parent menu",
+  );
+  assert.match(
+    menuSource,
+    /createMenuPopup\(doc\)/,
+    "fallback menu should create a child menupopup",
+  );
+  assert.match(
+    menuSource,
     /icon:\s*menuIcon/,
-    "MenuManager entries should use the plugin icon",
+    "MenuManager parent entry should use the plugin icon",
   );
   assert.match(
     menuSource,
@@ -882,6 +917,11 @@ function assertMenuActionContract(actions) {
 
   for (const locale of ["en-US", "zh-CN"]) {
     const ftl = readFileSync(`addon/locale/${locale}/addon.ftl`, "utf8");
+    assert.match(
+      ftl,
+      new RegExp(`^${parent.labelKey}\\s*=`, "m"),
+      `${parent.labelKey} should exist in ${locale} addon.ftl`,
+    );
     for (const action of actions) {
       assert.match(
         ftl,
@@ -890,6 +930,194 @@ function assertMenuActionContract(actions) {
       );
     }
   }
+
+  assertPngDimensions("addon/content/icons/favicon.png", 64, 64);
+  assertPngDimensions("addon/content/icons/favicon@0.5x.png", 32, 32);
+  assertMenuManagerSubmenuContract(parent, actions, menuApi);
+  assertFallbackSubmenuContract(parent, actions, menuApi);
+}
+
+function assertPngDimensions(filePath, width, height) {
+  const png = readFileSync(filePath);
+  assert.equal(png.toString("ascii", 1, 4), "PNG", `${filePath} is a PNG`);
+  assert.equal(png.readUInt32BE(16), width, `${filePath} width`);
+  assert.equal(png.readUInt32BE(20), height, `${filePath} height`);
+}
+
+function assertMenuManagerSubmenuContract(parent, actions, menuApi) {
+  const win = createFakeWindow();
+  let registeredOptions;
+  globalThis.Zotero.MenuManager = {
+    registerMenu(options) {
+      registeredOptions = options;
+      return "metadata-menu";
+    },
+    unregisterMenu() {
+      return true;
+    },
+  };
+
+  menuApi.registerMenu(win);
+
+  assert.equal(registeredOptions.menuID, parent.id);
+  assert.equal(registeredOptions.menus.length, 1);
+  assert.equal(registeredOptions.menus[0].menuType, "submenu");
+  assert.match(registeredOptions.menus[0].icon, /favicon\.png$/);
+  assert.deepEqual(
+    registeredOptions.menus[0].menus.map((menu) => menu.menuType),
+    actions.map(() => "menuitem"),
+  );
+  assert.equal(registeredOptions.menus[0].menus.length, actions.length);
+
+  menuApi.unregisterMenu(win);
+}
+
+function assertFallbackSubmenuContract(parent, actions, menuApi) {
+  const win = createFakeWindow();
+  globalThis.addon = {
+    data: {
+      locale: {
+        current: {
+          formatMessagesSync(messages) {
+            return messages.map((message) => ({
+              value: message.id.replace(/^updatemetadata-/, ""),
+            }));
+          },
+        },
+      },
+    },
+  };
+  globalThis.Zotero.MenuManager = {
+    registerMenu() {
+      return false;
+    },
+    unregisterMenu() {
+      return true;
+    },
+  };
+
+  menuApi.registerMenu(win);
+
+  const itemContextMenu = win.document.getElementById("zotero-itemmenu");
+  assert.equal(itemContextMenu.children.length, 1);
+
+  const parentMenu = itemContextMenu.children[0];
+  assert.equal(parentMenu.tagName, "menu");
+  assert.equal(parentMenu.getAttribute("id"), parent.id);
+  assert.equal(parentMenu.getAttribute("label"), parent.labelKey);
+  assert.match(parentMenu.getAttribute("image"), /favicon\.png$/);
+  assert.equal(parentMenu.children.length, 1);
+
+  const popup = parentMenu.children[0];
+  assert.equal(popup.tagName, "menupopup");
+  assert.deepEqual(
+    popup.children.map((child) => child.tagName),
+    actions.map(() => "menuitem"),
+  );
+  assert.deepEqual(
+    popup.children.map((child) => child.getAttribute("id")),
+    actions.map((action) => action.id),
+  );
+
+  menuApi.unregisterMenu(win);
+  assert.equal(itemContextMenu.children.length, 0);
+}
+
+function createFakeWindow() {
+  const document = createFakeDocument();
+  const itemContextMenu = document.createElement("menupopup");
+  itemContextMenu.setAttribute("id", "zotero-itemmenu");
+
+  return {
+    document,
+    ZoteroPane: {
+      getSelectedItems() {
+        return [];
+      },
+    },
+  };
+}
+
+function createFakeDocument() {
+  const elementsByID = new Map();
+
+  return {
+    createElement(tagName) {
+      return createFakeElement(this, tagName);
+    },
+    getElementById(id) {
+      return elementsByID.get(id) ?? null;
+    },
+    registerElementID(id, element) {
+      elementsByID.set(id, element);
+    },
+    unregisterElementID(id, element) {
+      if (elementsByID.get(id) === element) {
+        elementsByID.delete(id);
+      }
+    },
+  };
+}
+
+function createFakeElement(ownerDocument, tagName) {
+  const element = {
+    ownerDocument,
+    tagName,
+    attributes: new Map(),
+    children: [],
+    parentElement: null,
+    listeners: new Map(),
+    setAttribute(name, value) {
+      const stringValue = String(value);
+      if (name === "id") {
+        const oldID = this.attributes.get("id");
+        if (oldID) {
+          this.ownerDocument.unregisterElementID(oldID, this);
+        }
+        this.ownerDocument.registerElementID(stringValue, this);
+      }
+      this.attributes.set(name, stringValue);
+    },
+    getAttribute(name) {
+      return this.attributes.get(name) ?? null;
+    },
+    removeAttribute(name) {
+      if (name === "id") {
+        const oldID = this.attributes.get("id");
+        if (oldID) {
+          this.ownerDocument.unregisterElementID(oldID, this);
+        }
+      }
+      this.attributes.delete(name);
+    },
+    append(child) {
+      child.parentElement = this;
+      this.children.push(child);
+    },
+    remove() {
+      const id = this.attributes.get("id");
+      if (id) {
+        this.ownerDocument.unregisterElementID(id, this);
+      }
+      for (const child of [...this.children]) {
+        child.remove();
+      }
+      if (this.parentElement) {
+        this.parentElement.children = this.parentElement.children.filter(
+          (child) => child !== this,
+        );
+        this.parentElement = null;
+      }
+    },
+    addEventListener(type, listener) {
+      this.listeners.set(type, listener);
+    },
+    removeEventListener(type) {
+      this.listeners.delete(type);
+    },
+  };
+
+  return element;
 }
 
 function assertPreferenceWindowLocalization() {
