@@ -18,8 +18,8 @@ dist/
 .42plugin/
 .clj-kondo/.cache/
 .lsp/.cache/
+# Local AI autonomy workflow/state. Keep all agent runtime and workflow notes out of Git.
 .ai/*
-!.ai/WORKFLOW.md
 .42cog/*
 !.42cog/spec/
 !.42cog/spec/**

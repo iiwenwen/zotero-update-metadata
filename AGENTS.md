@@ -2,7 +2,7 @@
 
 You are the autonomous coding agent for this repository.
 
-Keep this file concise. It is the durable project entry point for Codex, not the full workflow manual. Detailed local workflow state lives in `.ai/WORKFLOW.md`; reusable review depth lives in `.codex/skills/zotero-review/SKILL.md`.
+Keep this file concise. It is the durable project entry point for Codex. AI autonomous workflow notes under `.ai/` are local-only and ignored by Git; reusable review depth lives in `.codex/skills/zotero-review/SKILL.md`.
 
 ## 1. Mission
 
@@ -15,7 +15,7 @@ This project is a Zotero desktop plugin. Treat Zotero user-library data as high 
 Classify each user request first:
 
 - `repo-change`: code, tests, product docs, build/config/release, or anything that creates a versioned project artifact. Must create or bind a CNB Issue before execution.
-- `agent-process-maintenance`: changes only to agent behavior, such as `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/prompts/`, `.codex/skills/`, or prompt/workflow governance. Do not create a CNB Issue by default; use local task/run records and a controlled git checkpoint if versioned files change.
+- `agent-process-maintenance`: changes only to agent behavior, such as `AGENTS.md`, `.codex/skills/`, or prompt/workflow governance. Do not create a CNB Issue by default; use local task/run records and a controlled git checkpoint if versioned files change.
 - `no-change review/advice`: audit, explanation, comparison, or recommendation only. Do not create Issues, queue state, commits, or fake checkpoints. Final output must say `Commit: N/A — no repository changes`.
 
 If a user report contains multiple independent problems, split by user-visible behavior. Handle only one task at a time unless the same root cause, same files, same risk, and same verification fully cover all symptoms.
@@ -25,12 +25,10 @@ If a user report contains multiple independent problems, split by user-visible b
 For `repo-change`, `agent-process-maintenance`, watchdog, or queue work, read in order:
 
 1. `AGENTS.md`
-2. `.ai/WORKFLOW.md`
-3. `.ai/STATE.md`
-4. `.ai/QUEUE.md`
-5. Current CNB Issue or `.ai/tasks/<task-id>.md`, only after one task is selected
+2. Local `.ai/WORKFLOW.md`, `.ai/STATE.md`, and `.ai/QUEUE.md` only when present
+3. Current CNB Issue or local `.ai/tasks/<task-id>.md`, only after one task is selected
 
-Do not scan the whole repository, `.ai/runs/`, or `.ai/memory/` at startup. Read those only when the current task needs them.
+Do not scan the whole repository, `.ai/runs/`, or `.ai/memory/` at startup. Read those only when the current task needs them. `.ai/` is local-only and must not be staged.
 
 For `no-change review/advice`, read only the requested context unless the user explicitly asks for repository-state judgment.
 
@@ -71,7 +69,7 @@ Record affected Cog entities by stable IDs when possible, for example `E1`, `E2`
 
 Every new or updated `.42cog/spec/**` document must reference `.42cog/cog/cog.md` and name the related agents, entities, flows, and weights.
 
-Keep the AI workflow responsible for orchestration only: task routing, planning gates, verification gates, review, persistence, and handoff. Do not encode full code-domain rules, implementation recipes, test matrices, or product decisions in `AGENTS.md` or `.ai/WORKFLOW.md`; put those in the relevant 42COG/spec document and reference them from the workflow.
+Keep the AI workflow responsible for orchestration only: task routing, planning gates, verification gates, review, persistence, and handoff. Do not encode full code-domain rules, implementation recipes, test matrices, or product decisions in `AGENTS.md` or local `.ai/WORKFLOW.md`; put those in the relevant 42COG/spec document and reference them from the workflow.
 
 ## 6. Zotero Safety And Test Ladder
 
@@ -140,7 +138,8 @@ Git rules:
 - never use `git add .` or `git add -A`
 - stage only Commit Scope files
 - `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` are `.ai local runtime state`: update them when needed, but do not stage them
-- versioned process/spec assets may include `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/prompts/**`, `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
+- versioned process/spec assets may include `AGENTS.md`, `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
+- `.ai/**` is local-only AI autonomous workflow/runtime state and must not be staged
 - do not stage logs, caches, env files, secrets, local sessions, or unrelated ignored files
 - run `git diff --cached --name-only` and `git diff --cached --check` before commit
 - if in-scope files mix user changes with task changes, stop with `NEED_HUMAN_DECISION`
@@ -192,7 +191,7 @@ Do not say “basically done”, “should work”, or “probably fine” as co
 
 Keep `AGENTS.md` short and practical. Add durable detail elsewhere:
 
-- `.ai/WORKFLOW.md`: local detailed execution flow and watchdog behavior
+- `.ai/WORKFLOW.md`: local-only detailed execution flow and watchdog behavior, ignored by Git
 - `.codex/skills/zotero-review/SKILL.md`: reusable adversarial review
 - `.ai/tasks/` and `.ai/runs/`: local task/run records
 - `.ai/memory/`: reusable local lessons
