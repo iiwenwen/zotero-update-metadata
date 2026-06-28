@@ -1,8 +1,10 @@
 import { config, homepage } from "../../package.json";
+import {
+  getConfiguredAttachmentSaveStrategy,
+  setConfiguredAttachmentSaveStrategy,
+} from "./attachmentPreferences";
 import { getString } from "../utils/locale";
 import { getPref, setPref } from "../utils/prefs";
-
-type AttachmentSaveStrategy = "none" | "missing" | "always";
 
 export function registerPrefsWindow() {
   Zotero.PreferencePanes.register({
@@ -90,7 +92,7 @@ function bindPrefEvents() {
     {
       tag: "menulist",
       attributes: {
-        value: getVisibleAttachmentSaveStrategy(),
+        value: getConfiguredAttachmentSaveStrategy(),
         native: "true",
       },
       listeners: [
@@ -99,10 +101,10 @@ function bindPrefEvents() {
           listener: (e: Event) => {
             if (e.target) {
               const target = e.target as HTMLInputElement;
-              const value = target.value;
-              setPref("attachmentSaveStrategy", value);
-              setPref("saveAttachments", value !== "none");
-              ztoolkit.log("attachmentSaveStrategy", value);
+              const strategy = setConfiguredAttachmentSaveStrategy(
+                target.value,
+              );
+              ztoolkit.log("attachmentSaveStrategy", strategy);
             }
           },
         },
@@ -157,24 +159,6 @@ function bindPrefCheckbox(doc: Document, prefKey: string) {
 
   checkbox.addEventListener("command", saveCheckedState);
   checkbox.addEventListener("change", saveCheckedState);
-}
-
-function getVisibleAttachmentSaveStrategy(): AttachmentSaveStrategy {
-  const strategy = getPref("attachmentSaveStrategy");
-  if (isAttachmentSaveStrategy(strategy)) {
-    return strategy;
-  }
-
-  const legacySaveAttachments = getPref("saveAttachments");
-  return legacySaveAttachments === false || legacySaveAttachments === "false"
-    ? "none"
-    : "missing";
-}
-
-function isAttachmentSaveStrategy(
-  value: unknown,
-): value is AttachmentSaveStrategy {
-  return value === "missing" || value === "always" || value === "none";
 }
 
 function makeId(type: string) {

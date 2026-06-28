@@ -7,6 +7,10 @@ import { build } from "esbuild";
 
 const tmp = mkdtempSync(path.join(tmpdir(), "metadata-smoke-"));
 const outfile = path.join(tmp, "metadata.cjs");
+const attachmentPreferencesOutfile = path.join(
+  tmp,
+  "attachmentPreferences.cjs",
+);
 const require = createRequire(import.meta.url);
 
 try {
@@ -16,6 +20,14 @@ try {
     format: "cjs",
     platform: "node",
     outfile,
+    logLevel: "silent",
+  });
+  await build({
+    entryPoints: ["src/modules/attachmentPreferences.ts"],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    outfile: attachmentPreferencesOutfile,
     logLevel: "silent",
   });
 
@@ -43,6 +55,9 @@ try {
     sanitizeMetadataLogData,
     translateWithMetadataProviders,
   } = require(outfile);
+  const { setConfiguredAttachmentSaveStrategy } = require(
+    attachmentPreferencesOutfile,
+  );
 
   globalThis.ztoolkit = {
     log() {},
@@ -611,6 +626,28 @@ try {
   };
   assert.equal(getConfiguredAttachmentSaveStrategy(), "always");
 
+  const preferenceWrites = [];
+  globalThis.Zotero.Prefs = {
+    set(prefName, value) {
+      preferenceWrites.push({ prefName, value });
+      return true;
+    },
+  };
+  assert.equal(setConfiguredAttachmentSaveStrategy("always"), "always");
+  assert.equal(setConfiguredAttachmentSaveStrategy("bad-value"), "none");
+  assert.deepEqual(
+    preferenceWrites.map(({ prefName, value }) => ({
+      key: prefName.replace(/^extensions\.zotero\.updatemetadata\./, ""),
+      value,
+    })),
+    [
+      { key: "attachmentSaveStrategy", value: "always" },
+      { key: "saveAttachments", value: true },
+      { key: "attachmentSaveStrategy", value: "none" },
+      { key: "saveAttachments", value: false },
+    ],
+  );
+
   globalThis.Zotero.Prefs = {
     get(prefName) {
       assert.match(prefName, /confirmBeforeUpdate$/);
@@ -868,11 +905,26 @@ function assertPreferenceCheckboxBindings() {
     "src/modules/preferenceWindow.ts",
     "utf8",
   );
+  const metadataSource = readFileSync("src/modules/metadata.ts", "utf8");
+  const attachmentPreferencesSource = readFileSync(
+    "src/modules/attachmentPreferences.ts",
+    "utf8",
+  );
 
   assert.doesNotMatch(
     preferenceWindowSource,
     /bindPrefCheckbox\(doc, "saveAttachments"\)/,
     "legacy saveAttachments should not be bound as a duplicate checkbox",
+  );
+  assert.doesNotMatch(
+    preferenceWindowSource,
+    /function\s+(getVisibleAttachmentSaveStrategy|isAttachmentSaveStrategy)\b/,
+    "attachment strategy normalization should be centralized outside the preference window",
+  );
+  assert.doesNotMatch(
+    metadataSource,
+    /function\s+isAttachmentSaveStrategy\b/,
+    "metadata should use the centralized attachment preference helper",
   );
 
   for (const prefKey of ["confirmBeforeUpdate", "saveNotes"]) {
@@ -889,9 +941,19 @@ function assertPreferenceCheckboxBindings() {
     "checkbox changes should be persisted to Zotero prefs",
   );
   assert.match(
-    preferenceWindowSource,
-    /setPref\("saveAttachments", value !== "none"\)/,
+    attachmentPreferencesSource,
+    /setPref\("saveAttachments", strategy !== "none"\)/,
     "attachment strategy changes should mirror the legacy pref for compatibility",
+  );
+  assert.match(
+    preferenceWindowSource,
+    /setConfiguredAttachmentSaveStrategy\(\s*target\.value,?\s*\)/,
+    "preference window should persist attachment strategy through the shared helper",
+  );
+  assert.match(
+    metadataSource,
+    /from "\.\/attachmentPreferences"/,
+    "metadata should read attachment strategy through the shared helper",
   );
 }
 
