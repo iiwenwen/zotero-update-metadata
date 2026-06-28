@@ -309,34 +309,39 @@ complexity: SIMPLE / COMPLEX
 
 ### 8.3 Zotero 测试安全边界
 
+此前误启正式 Zotero.app 的问题已通过开发运行链路收紧修复。后续不再因为
+“需要启动 Zotero UI”本身阻塞测试；UI / runtime 测试是用户可见行为和插件
+启动路径的正常验证手段。安全边界从“少启动”调整为“只能通过受控脚本和隔离
+profile/dataDir 启动，绝不连接真实用户库”。
+
 Zotero 插件测试分为三档，必须先声明采用哪一档：
 
-1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。默认优先使用这一档。
-2. `isolated Zotero integration`：只能在仓库根目录执行精确命令 `npm run start` 启动 Zotero；涉及写入行为的 bug 必须在这一档验证真实写入路径；但写入目标只能是隔离 profile 下的临时测试库/fixture 库，必须同时满足：profile 路径和 dataDir 都位于明确的测试根目录、不会连接真实用户资料库；执行前必须输出并记录精确命令 `npm run start`、profile 路径、测试库数据目录、fixture 条目和预期写入 diff。除 `npm run start` 外，不存在 AI 可执行的 Zotero 启动、重启、热重载或调试 URL 命令。
-3. `real Zotero/manual`：任何会启动 `/Applications/Zotero.app`、连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作，默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
+1. `static/unit smoke`：只运行 Node、TypeScript、打包或 fixture/harness，不启动 Zotero。适用于纯函数、静态规则、文档或快速回归，不再作为 UI/运行时任务的默认替代品。
+2. `scaffold-managed Zotero UI/integration`：使用项目 npm 脚本启动、重载或驱动 Zotero UI，是插件菜单、偏好窗口、ProgressWindow、启动生命周期、真实写入路径和用户可见行为的默认自动化验证档。允许在仓库根目录执行 `npm run start`、`npm run reload`，以及后续新增的 `npm run test:ui`、`npm run smoke:ui` 等项目 npm UI smoke 脚本。npm 脚本层的 start / reload 是正常验证入口，不再因为“会启动或重载 Zotero UI”而阻塞。
+3. `real Zotero/manual`：连接正式 Zotero 用户资料库、复用用户日常 profile、或需要用户手动在正式 Zotero 中验证的操作默认禁止；除非用户明确要求并确认风险，否则必须停止并输出 `NEED_HUMAN_DECISION`。
 
-执行 Zotero 集成测试前，必须先判定当前 Zotero 进程属于哪一类：
+执行 Zotero UI / 集成测试前，必须先判定当前 Zotero 进程属于哪一类：
 
-- `isolated test instance`：进程启动参数包含测试 profile，且该 profile 的 `extensions.zotero.dataDir` 指向测试库目录。
+- `isolated test instance`：进程启动参数、scaffold runner、环境变量或本机测试配置能证明使用测试 profile / 测试 dataDir；profile/dataDir 可以位于 `.scaffold/`、项目外测试根目录或明确的 fixture 根目录。
 - `real user instance`：正式 profile、正式 dataDir，或无法证明隔离。
 
 Zotero 运行时命令白名单：
 
-- 允许 AI 执行的启动命令：`npm run start`
-- 允许 AI 执行的非启动命令：`npm run build`、`npm test`
-- 禁止 AI 执行：`npm run reload`、`npm run reload:print`、`npm run stop`、`node scripts/reload.mjs`、`node scripts/debug-url.mjs`、`node scripts/stop.mjs`、`/Applications/Zotero.app/Contents/MacOS/zotero`、`open -a Zotero`、`zotero`、`zotero://...`、任何包含 `zotero://ztoolkit-debug` 或 `-url` 的命令
+- 允许 AI 执行的启动/重载/UI 命令：`npm run start`、`npm run reload`，以及经过检查的项目 npm UI smoke 脚本（例如未来的 `npm run test:ui` / `npm run smoke:ui`）。
+- 允许 AI 执行的非 UI 命令：`npm run build`、`npm test`、静态 smoke / fixture harness。
+- 禁止 AI 执行：直接执行 `/Applications/Zotero.app/Contents/MacOS/zotero`、`open -a Zotero`、裸 `zotero` 命令、裸 `zotero://...`、或任何绕过项目 npm 脚本直接发送 `zotero://ztoolkit-debug` / `-url` 的命令。`npm run stop` 仍只允许在该脚本明确存在且本轮需要清理测试实例时使用，并必须记录原因。
 
-如果已存在 `isolated test instance`，不要执行任何热重载、调试 URL 或 stop 命令；需要重新加载或重启时，只能停止并输出 `NEED_HUMAN_DECISION: Zotero runtime reload/restart requires user action or npm run start from a clean state`。禁止把只带 `-profile` 但 dataDir 未确认隔离的启动命令视为安全测试环境。禁止向 `real user instance` 发送插件测试命令。
+如果已存在 `isolated test instance`，可以继续使用它执行 UI / runtime 测试；不必为了形式完整而重启。需要重新加载或重启时，正常执行 `npm run reload` 或 `npm run start`，并记录原因和日志。禁止向 `real user instance` 发送插件测试命令。
 
 在执行任何可能启动 Zotero 的命令前，必须先检查并记录：
 
 - 当前是否已有 Zotero 进程
-- 将使用的 Zotero 可执行路径
-- profile / data directory 是否隔离
+- 将使用的 npm 脚本，以及脚本解析出的 Zotero 可执行路径（如可得）
+- profile / data directory 或 scaffold test runner 是否隔离
 - 测试是否会写入条目、附件、笔记、标签、Extra 或偏好；如果会写入，必须说明写入到哪个测试库、写入前后如何检查 diff、如何证明主库未连接且未变更
 - 退出/清理和失败恢复方式
 
-如果无法证明以上隔离条件，允许继续做 `static/unit smoke`，但不得声明插件运行时验证已完成，不得关闭涉及运行时行为的 Issue。涉及写入确认、附件、笔记、标签、Extra 或偏好持久化的 Issue，不能因为“避免写入”而跳过运行时验证；必须写入隔离测试库，或标记 `BLOCKED: isolated test library unavailable`。
+如果无法证明以上隔离条件，允许继续做 `static/unit smoke`，但不得声明插件运行时验证已完成，不得关闭涉及运行时行为的 Issue。涉及写入确认、附件、笔记、标签、Extra 或偏好持久化的 Issue，不能因为“避免写入”而跳过运行时验证；必须在 scaffold-managed UI/integration 档写入隔离测试库，或标记 `BLOCKED: isolated test library unavailable`。
 
 创建 PR 或准备 PR handoff 前，必须先自审。自审至少覆盖：
 
