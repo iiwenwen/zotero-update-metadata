@@ -30,6 +30,7 @@ try {
     formatBatchUpdateSummary,
     formatBatchUpdateSummaryLines,
     formatMetadataUpdatePreview,
+    getConfiguredAttachmentSaveStrategy,
     getItemISBN,
     isNoTitleSpecifiedError,
     lowersDatePrecision,
@@ -573,6 +574,45 @@ try {
 
   globalThis.Zotero.Prefs = {
     get(prefName) {
+      if (prefName.endsWith(".attachmentSaveStrategy")) {
+        return "legacy";
+      }
+      if (prefName.endsWith(".saveAttachments")) {
+        return false;
+      }
+      return undefined;
+    },
+  };
+  assert.equal(getConfiguredAttachmentSaveStrategy(), "none");
+
+  globalThis.Zotero.Prefs = {
+    get(prefName) {
+      if (prefName.endsWith(".attachmentSaveStrategy")) {
+        return "legacy";
+      }
+      if (prefName.endsWith(".saveAttachments")) {
+        return true;
+      }
+      return undefined;
+    },
+  };
+  assert.equal(getConfiguredAttachmentSaveStrategy(), "missing");
+
+  globalThis.Zotero.Prefs = {
+    get(prefName) {
+      if (prefName.endsWith(".attachmentSaveStrategy")) {
+        return "always";
+      }
+      if (prefName.endsWith(".saveAttachments")) {
+        return false;
+      }
+      return undefined;
+    },
+  };
+  assert.equal(getConfiguredAttachmentSaveStrategy(), "always");
+
+  globalThis.Zotero.Prefs = {
+    get(prefName) {
       assert.match(prefName, /confirmBeforeUpdate$/);
       return "true";
     },
@@ -759,7 +799,6 @@ function assertPreferenceWindowLocalization() {
   );
   const preferenceMessages = [
     "pref-select",
-    "pref-saveAttachments",
     "pref-confirmBeforeUpdate",
     "pref-attachmentStrategy",
     "pref-saveNotes",
@@ -775,11 +814,13 @@ function assertPreferenceWindowLocalization() {
     );
   }
 
-  for (const message of [
-    "pref-saveAttachments",
-    "pref-confirmBeforeUpdate",
-    "pref-saveNotes",
-  ]) {
+  assert.doesNotMatch(
+    preferencesXhtml,
+    /pref-saveAttachments|__addonRef__-saveAttachments/,
+    "legacy saveAttachments should not remain as a visible preference control",
+  );
+
+  for (const message of ["pref-confirmBeforeUpdate", "pref-saveNotes"]) {
     assert.match(
       preferencesXhtml,
       new RegExp(
@@ -807,6 +848,11 @@ function assertPreferenceWindowLocalization() {
 
   for (const locale of ["en-US", "zh-CN"]) {
     const ftl = readFileSync(`addon/locale/${locale}/preferences.ftl`, "utf8");
+    assert.doesNotMatch(
+      ftl,
+      /^pref-saveAttachments\s*=/m,
+      `legacy saveAttachments label should not remain in ${locale} preferences.ftl`,
+    );
     for (const message of preferenceMessages) {
       assert.match(
         ftl,
@@ -823,11 +869,13 @@ function assertPreferenceCheckboxBindings() {
     "utf8",
   );
 
-  for (const prefKey of [
-    "saveAttachments",
-    "confirmBeforeUpdate",
-    "saveNotes",
-  ]) {
+  assert.doesNotMatch(
+    preferenceWindowSource,
+    /bindPrefCheckbox\(doc, "saveAttachments"\)/,
+    "legacy saveAttachments should not be bound as a duplicate checkbox",
+  );
+
+  for (const prefKey of ["confirmBeforeUpdate", "saveNotes"]) {
     assert.match(
       preferenceWindowSource,
       new RegExp(`bindPrefCheckbox\\(doc, "${prefKey}"\\)`),
@@ -839,6 +887,11 @@ function assertPreferenceCheckboxBindings() {
     preferenceWindowSource,
     /setPref\(prefKey, checkbox\.checked === true\)/,
     "checkbox changes should be persisted to Zotero prefs",
+  );
+  assert.match(
+    preferenceWindowSource,
+    /setPref\("saveAttachments", value !== "none"\)/,
+    "attachment strategy changes should mirror the legacy pref for compatibility",
   );
 }
 

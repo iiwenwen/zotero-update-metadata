@@ -29,7 +29,6 @@ export type FluentMessageId =
   | 'pref-confirmBeforeUpdate'
   | 'pref-general'
   | 'pref-help'
-  | 'pref-saveAttachments'
   | 'pref-saveNotes'
   | 'pref-select'
   | 'pref-title'

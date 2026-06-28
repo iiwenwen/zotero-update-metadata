@@ -325,10 +325,11 @@ export async function getMeta(context: MetadataRunContext = {}) {
 
 function getSettings(collectionID?: number): MetadataSaveSettings {
   const options = getPref("schema");
+  const attachmentSaveStrategy = getAttachmentSaveStrategy();
 
   // 创建返回对象的基本结构
   const settings: MetadataSaveSettings = {
-    saveAttachments: getPref("saveAttachments") as boolean,
+    saveAttachments: attachmentSaveStrategy !== "none",
     libraryID: options === "save" ? Zotero.Libraries.userLibraryID : false,
   };
 
@@ -652,24 +653,36 @@ function formatBatchUpdateReasonText(summary: BatchUpdateSummary) {
 export function normalizeAttachmentSaveStrategy(
   value: unknown,
 ): AttachmentSaveStrategy {
-  if (value === "missing" || value === "always" || value === "none") {
+  if (isAttachmentSaveStrategy(value)) {
     return value;
   }
   return "none";
 }
 
-function getAttachmentSaveStrategy(
-  saveAttachments = getPref("saveAttachments") === true,
-): AttachmentSaveStrategy {
-  if (!saveAttachments) {
-    return "none";
-  }
-
+export function getConfiguredAttachmentSaveStrategy(): AttachmentSaveStrategy {
   const strategy = getPref("attachmentSaveStrategy");
-  if (strategy === "missing" || strategy === "always" || strategy === "none") {
+  if (isAttachmentSaveStrategy(strategy)) {
     return strategy;
   }
-  return "missing";
+
+  const legacySaveAttachments = getPref("saveAttachments");
+  return legacySaveAttachments === false || legacySaveAttachments === "false"
+    ? "none"
+    : "missing";
+}
+
+function getAttachmentSaveStrategy(
+  saveAttachments?: boolean,
+): AttachmentSaveStrategy {
+  return saveAttachments === false
+    ? "none"
+    : getConfiguredAttachmentSaveStrategy();
+}
+
+function isAttachmentSaveStrategy(
+  value: unknown,
+): value is AttachmentSaveStrategy {
+  return value === "missing" || value === "always" || value === "none";
 }
 
 export function shouldTryAttachmentSave(
