@@ -4,6 +4,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
+import {
+  detectZoteroRunning,
+  isZoteroMainProcessCommand,
+} from "./zotero-process-detection.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const packageJsonPath = path.join(repoRoot, "package.json");
@@ -81,6 +85,43 @@ assert.match(
   guardedStartScript,
   /zotero-plugin[\s\S]*serve/,
   "guarded start script should delegate startup to scaffold serve only when needed",
+);
+
+assert.equal(
+  isZoteroMainProcessCommand(
+    "/Applications/Zotero.app/Contents/PlugIns/ZoteroSafariExtension.appex/Contents/MacOS/ZoteroSafariExtension",
+  ),
+  false,
+  "Zotero Safari Extension must not be treated as the Zotero main process",
+);
+assert.equal(
+  isZoteroMainProcessCommand(
+    "/Applications/Zotero.app/Contents/MacOS/zotero --purgecaches no-remote -profile /tmp/profile",
+  ),
+  true,
+  "the macOS Zotero app bundle main executable should be treated as running Zotero",
+);
+
+const probedCommands = [];
+assert.equal(
+  detectZoteroRunning({
+    platform: "darwin",
+    runCommand(command, args) {
+      probedCommands.push([command, ...args]);
+      return { status: 1, stdout: "" };
+    },
+  }),
+  false,
+  "Zotero should be considered stopped when only broad app-bundle matches would exist",
+);
+assert.deepEqual(
+  probedCommands,
+  [
+    ["pgrep", "-x", "Zotero"],
+    ["pgrep", "-x", "zotero"],
+    ["pgrep", "-f", "Zotero\\.app/Contents/MacOS/zotero(\\s|$)"],
+  ],
+  "Zotero detection must use exact process names and the app bundle main executable, not a broad Zotero.app match",
 );
 
 const devGuardResult = spawnSync(process.execPath, [runtimeGuardPath], {
