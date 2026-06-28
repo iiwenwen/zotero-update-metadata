@@ -16,7 +16,7 @@ export function isNoTitleSpecifiedError(err: unknown) {
 type MetadataProviderInput = {
   url?: string;
   oldItem?: Zotero.Item;
-  settings?: ReturnType<typeof getSettings>;
+  settings?: MetadataSaveSettings;
 };
 
 type MetadataProvider = {
@@ -58,6 +58,17 @@ export type BatchUpdateSummaryLabels = {
 
 export type AttachmentSaveStrategy = "none" | "missing" | "always";
 export const METADATA_RESULT_CLOSE_TIME_MS = 8000;
+
+export type MetadataSaveSettings = {
+  saveAttachments: boolean;
+  libraryID: boolean | number;
+  collections?: number[];
+};
+
+export type SaveNewMetadataItemResult = {
+  status: "saved";
+  item: Zotero.Item;
+};
 
 export type MetadataRunContext = {
   win?: _ZoteroTypes.MainWindow;
@@ -125,6 +136,9 @@ export async function getMeta(context: MetadataRunContext = {}) {
     return item.isRegularItem();
   });
   const settings = getSettings(context.collectionID);
+  const schema = getPref("schema");
+  const translationSettings =
+    schema === "save" ? buildMetadataTranslationSettings(settings) : settings;
   const popWin = new ztoolkit.ProgressWindow(
     getString("itemmenu-updateMetadata-label"),
     {
@@ -186,14 +200,15 @@ export async function getMeta(context: MetadataRunContext = {}) {
       const translatedResult = await translateMetadataForItem(
         url,
         item,
-        settings,
+        translationSettings,
       );
       const translatedItem = translatedResult.item;
       if (!translatedItem) {
         throw new Error("No translated metadata found");
       }
 
-      if (getPref("schema") === "save") {
+      if (schema === "save") {
+        await saveNewMetadataItem(translatedItem, settings);
         summary.success += 1;
         if (translatedResult.provider !== "douban-url") {
           summary.fallback += 1;
@@ -257,19 +272,11 @@ export async function getMeta(context: MetadataRunContext = {}) {
   popWin.startCloseTimer(METADATA_RESULT_CLOSE_TIME_MS);
 }
 
-function getSettings(collectionID?: number): {
-  saveAttachments: boolean;
-  libraryID: boolean | number;
-  collections?: number[];
-} {
+function getSettings(collectionID?: number): MetadataSaveSettings {
   const options = getPref("schema");
 
   // 创建返回对象的基本结构
-  const settings: {
-    saveAttachments: boolean;
-    libraryID: boolean | number;
-    collections?: number[];
-  } = {
+  const settings: MetadataSaveSettings = {
     saveAttachments: getPref("saveAttachments") as boolean,
     libraryID: options === "save" ? Zotero.Libraries.userLibraryID : false,
   };
@@ -282,10 +289,23 @@ function getSettings(collectionID?: number): {
   return settings;
 }
 
+export function buildMetadataTranslationSettings(
+  settings: MetadataSaveSettings,
+): MetadataSaveSettings {
+  const translationSettings: MetadataSaveSettings = {
+    ...settings,
+    saveAttachments: false,
+    libraryID: false,
+  };
+
+  delete translationSettings.collections;
+  return translationSettings;
+}
+
 async function translateDoubanDocument(
   doc: Document,
   url: string,
-  settings: ReturnType<typeof getSettings>,
+  settings: MetadataSaveSettings,
 ) {
   const translate = new Zotero.Translate.Web();
   translate.setDocument(doc);
@@ -323,10 +343,7 @@ async function translateDoubanDocument(
   }
 }
 
-async function translateURL(
-  url: string,
-  settings: ReturnType<typeof getSettings>,
-) {
+async function translateURL(url: string, settings: MetadataSaveSettings) {
   let key = url;
   try {
     const uri = Services.io.newURI(url);
@@ -368,10 +385,7 @@ function importConcurrentCaller() {
   return Components.utils.import("resource://zotero/concurrentCaller.js");
 }
 
-async function _translateURLNow(
-  url: string,
-  settings: ReturnType<typeof getSettings>,
-) {
+async function _translateURLNow(url: string, settings: MetadataSaveSettings) {
   const doc = (await Zotero.HTTP.processDocuments(url, (doc) => doc))[0];
   if (!doc) {
     throw new Error("Unable to load metadata URL");
@@ -479,7 +493,7 @@ export async function translateWithMetadataProviders(
 async function translateMetadataForItem(
   url: string,
   oldItem: Zotero.Item,
-  settings: ReturnType<typeof getSettings>,
+  settings: MetadataSaveSettings,
 ) {
   return translateWithMetadataProviders(
     {
@@ -593,12 +607,18 @@ export function normalizeAttachmentSaveStrategy(
   return "none";
 }
 
-function getAttachmentSaveStrategy(): AttachmentSaveStrategy {
+function getAttachmentSaveStrategy(
+  saveAttachments = getPref("saveAttachments") === true,
+): AttachmentSaveStrategy {
+  if (!saveAttachments) {
+    return "none";
+  }
+
   const strategy = getPref("attachmentSaveStrategy");
   if (strategy === "missing" || strategy === "always" || strategy === "none") {
     return strategy;
   }
-  return getPref("saveAttachments") === true ? "missing" : "none";
+  return "missing";
 }
 
 export function shouldTryAttachmentSave(
@@ -776,6 +796,66 @@ async function saveAttachments(newItem: any, oldItem: Zotero.Item) {
   return attachment;
 }
 
+export async function saveNewMetadataItem(
+  newItem: any,
+  settings: MetadataSaveSettings,
+): Promise<SaveNewMetadataItemResult> {
+  const itemJSON = normalizeSaveableMetadataItem(newItem);
+  const itemType = (cleanText(itemJSON.itemType) || "book") as any;
+  const item = new Zotero.Item(itemType);
+  const libraryID =
+    typeof settings.libraryID === "number"
+      ? settings.libraryID
+      : Zotero.Libraries.userLibraryID;
+
+  (item as any).libraryID = libraryID;
+  item.fromJSON(getPrimaryMetadataForSave(itemJSON), { strict: false });
+
+  if (Array.isArray(settings.collections) && settings.collections.length) {
+    item.setCollections(settings.collections);
+  }
+
+  await item.saveTx();
+  await saveSupplementalMetadata(itemJSON, item, {
+    saveAttachments: settings.saveAttachments,
+  });
+
+  return {
+    status: "saved",
+    item,
+  };
+}
+
+function normalizeSaveableMetadataItem(newItem: any) {
+  const itemJSON = normalizeTranslatedMetadataItem(newItem);
+  const title = cleanText(itemJSON.title);
+
+  if (!title) {
+    throw new Error("Translated metadata has no title");
+  }
+
+  return {
+    ...itemJSON,
+    itemType: cleanText(itemJSON.itemType) || "book",
+    title,
+  };
+}
+
+function getPrimaryMetadataForSave(newItem: any) {
+  const {
+    __fallbackDoubanItem: _fallback,
+    attachments: _attachments,
+    collections: _collections,
+    key: _key,
+    libraryID: _libraryID,
+    notes: _notes,
+    version: _version,
+    ...metadata
+  } = newItem;
+
+  return metadata;
+}
+
 async function updateItem(
   newItem: any,
   oldItem: Zotero.Item,
@@ -871,12 +951,16 @@ async function updateItem(
   return result;
 }
 
-async function saveSupplementalMetadata(newItem: any, oldItem: Zotero.Item) {
+async function saveSupplementalMetadata(
+  newItem: any,
+  oldItem: Zotero.Item,
+  options: { saveAttachments?: boolean } = {},
+) {
   if (getPref("saveNotes") === true) {
     await saveMetadataNote(newItem, oldItem);
   }
 
-  const strategy = getAttachmentSaveStrategy();
+  const strategy = getAttachmentSaveStrategy(options.saveAttachments);
   if (shouldTryAttachmentSave(newItem, oldItem, strategy)) {
     await saveAttachments(newItem, oldItem);
   }

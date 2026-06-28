@@ -23,6 +23,7 @@ try {
     applyMetadataUpdateWithConfirmation,
     applySafeMetadataUpdate,
     buildAttachmentImportOptions,
+    buildMetadataTranslationSettings,
     buildMetadataUpdatePreview,
     buildFallbackDoubanItem,
     extractDoubanTitle,
@@ -37,8 +38,13 @@ try {
     normalizeAttachmentSaveStrategy,
     shouldConfirmBeforeMetadataUpdate,
     shouldTryAttachmentSave,
+    saveNewMetadataItem,
     translateWithMetadataProviders,
   } = require(outfile);
+
+  globalThis.ztoolkit = {
+    log() {},
+  };
 
   const documentWithMeta = createMockDocument({
     title: "Ignored browser title (豆瓣)",
@@ -95,7 +101,60 @@ try {
     "DOI: old-doi\nUser Note: keep me\nISBN: 978",
   );
 
+  const savedNewItems = [];
+  const importedAttachments = [];
+
   globalThis.Zotero = {
+    Item: class MockZoteroItem {
+      constructor(itemType) {
+        this.id = undefined;
+        this.itemType = itemType;
+        this.itemTypeID = globalThis.Zotero.ItemTypes.getID(itemType);
+        this.libraryID = undefined;
+        this.fields = {};
+        this.collections = [];
+        this.attachments = [];
+        this.notes = [];
+        this.saveCount = 0;
+      }
+
+      fromJSON(json) {
+        this.json = { ...json };
+        this.itemType = json.itemType || this.itemType;
+        this.itemTypeID = globalThis.Zotero.ItemTypes.getID(this.itemType);
+        this.fields = { ...json };
+      }
+
+      setCollections(collections) {
+        this.collections = [...collections];
+      }
+
+      getAttachments() {
+        return [...this.attachments];
+      }
+
+      getNotes() {
+        return [...this.notes];
+      }
+
+      setNote(note) {
+        this.note = note;
+      }
+
+      async saveTx() {
+        this.saveCount += 1;
+        if (!this.id) {
+          this.id = 200 + savedNewItems.length;
+        }
+        savedNewItems.push(this);
+      }
+    },
+    Attachments: {
+      async importFromURL(options) {
+        importedAttachments.push({ ...options });
+        return { id: 500 + importedAttachments.length, ...options };
+      },
+    },
     ItemTypes: {
       getID(itemType) {
         return { book: 1, webpage: 2 }[itemType] || 0;
@@ -113,6 +172,18 @@ try {
       userLibraryID: 1,
     },
   };
+
+  assert.deepEqual(
+    buildMetadataTranslationSettings({
+      saveAttachments: true,
+      libraryID: 1,
+      collections: [9],
+    }),
+    {
+      saveAttachments: false,
+      libraryID: false,
+    },
+  );
 
   const mockItem = createMockItem({
     itemTypeID: 1,
@@ -583,6 +654,64 @@ try {
       },
     },
   );
+
+  globalThis.Zotero.Prefs = {
+    get(prefName) {
+      if (prefName.endsWith(".saveNotes")) {
+        return false;
+      }
+      if (prefName.endsWith(".attachmentSaveStrategy")) {
+        return "missing";
+      }
+      return undefined;
+    },
+  };
+
+  savedNewItems.length = 0;
+  importedAttachments.length = 0;
+  const saveNewResult = await saveNewMetadataItem(translatedWithAttachment, {
+    saveAttachments: true,
+    libraryID: 1,
+    collections: [9],
+  });
+
+  assert.equal(saveNewResult.status, "saved");
+  assert.equal(savedNewItems.length, 1);
+  assert.equal(importedAttachments.length, 1);
+  assert.equal(saveNewResult.item.saveCount, 1);
+  assert.deepEqual(saveNewResult.item.collections, [9]);
+  assert.equal(saveNewResult.item.json.title, "Norwegian Wood");
+  assert.equal(saveNewResult.item.json.attachments, undefined);
+  assert.equal(saveNewResult.item.json.notes, undefined);
+  assert.equal(importedAttachments[0].parentItemID, saveNewResult.item.id);
+  assert.equal(importedAttachments[0].libraryID, 1);
+  assert.equal(importedAttachments[0].title, "Full Text");
+
+  savedNewItems.length = 0;
+  importedAttachments.length = 0;
+  await saveNewMetadataItem(translatedWithAttachment, {
+    saveAttachments: false,
+    libraryID: 1,
+  });
+  assert.equal(savedNewItems.length, 1);
+  assert.equal(importedAttachments.length, 0);
+
+  savedNewItems.length = 0;
+  await assert.rejects(
+    () =>
+      saveNewMetadataItem(
+        {
+          itemType: "book",
+          attachments: translatedWithAttachment.attachments,
+        },
+        {
+          saveAttachments: true,
+          libraryID: 1,
+        },
+      ),
+    /Translated metadata has no title/,
+  );
+  assert.equal(savedNewItems.length, 0);
 
   assertPreferenceWindowLocalization();
   assertPreferenceCheckboxBindings();
