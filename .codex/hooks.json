@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|functions\\.exec_command|exec_command|shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/zotero-runtime-guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking Zotero runtime command"
+          }
+        ]
+      }
+    ]
+  }
+}

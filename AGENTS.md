@@ -58,37 +58,41 @@ Use the smallest planning level that fits the task.
 - Record `certainty`, `risk`, and `intent_self_check` before execution.
 - `LOW` certainty or `HIGH` risk means `NEED_HUMAN_DECISION`.
 
-High-risk operations always need explicit human confirmation: deleting many files, deleting user data, changing migrations, backup/restore formats, security boundaries, permissions, releases, merging to `main`, deleting branches, rewriting git history, overwriting user changes, or touching a real Zotero profile/library.
+High-risk operations always need explicit human confirmation: deleting many files, deleting user data, changing migrations, backup/restore formats, security boundaries, permissions, releases, bypassing the CNB merge gate, deleting branches, rewriting git history, overwriting user changes, or touching a real Zotero profile/library.
 
 Every non-trivial task must align with 42COG/RCSW using the minimum necessary files:
 
 - `.42cog/meta/meta.md`
 - `.42cog/real/real.md`
 - `.42cog/cog/cog.md`
-- directly related `spec/` or `.42cog/` docs only when needed
+- directly related `.42cog/spec/`, `spec/`, or `.42cog/work/` docs when the task touches product, design, architecture, coding, QA, dependency, release, or domain behavior
 
 Record affected Cog entities by stable IDs when possible, for example `E1`, `E2`, `E3`.
 
+Every new or updated `.42cog/spec/**` document must reference `.42cog/cog/cog.md` and name the related agents, entities, flows, and weights.
+
+Keep the AI workflow responsible for orchestration only: task routing, planning gates, verification gates, review, persistence, and handoff. Do not encode full code-domain rules, implementation recipes, test matrices, or product decisions in `AGENTS.md` or `.ai/WORKFLOW.md`; put those in the relevant 42COG/spec document and reference them from the workflow.
+
 ## 6. Zotero Safety And Test Ladder
 
-Code changes must prove function before UI.
+Code changes must prove function before UI. The detailed verification matrix lives in `.42cog/spec/qa-zotero-verification.md`; this file only keeps the hard trigger.
 
-Validation order:
+Every task must choose and record a `verification_tier`:
 
-1. `static/unit smoke`: Node, TypeScript, fixture, harness, target function, build, lint, or formatting checks. No Zotero UI.
-2. `functional smoke`: automated check for the target behavior, data strategy, error feedback, or log marker. Prefer no UI.
-3. `scaffold-managed Zotero UI/integration`: only when the first two layers cannot prove a required user-visible or runtime path.
+- `docs_or_process`
+- `pure_build_or_types`
+- `pure_logic`
+- `user_visible_plugin_behavior`
+- `zotero_data_write_or_preferences`
+- `release_or_dependency`
 
-Rules for Zotero UI/runtime:
+Spec routing:
 
-- Never use a real user Zotero profile/library.
-- Prove the profile/data directory is isolated before any UI/runtime command.
-- Prefer reusing an already proven isolated test instance.
-- In one task, start or restart Zotero UI at most once by default.
-- Do not repeat UI smoke just to feel safer once it has enough evidence.
-- If isolation cannot be proven, stop with `BLOCKED: isolated Zotero UI unavailable` or `NEED_HUMAN_DECISION`.
-
-Allowed runtime paths are project-managed npm scripts only. Do not directly run `/Applications/Zotero.app`, `open -a Zotero`, bare `zotero`, bare `zotero://...`, or raw `zotero://ztoolkit-debug` / `-url` commands.
+- Zotero data writes or preferences: `.42cog/spec/zotero-data-safety.md`
+- Zotero runtime/UI commands: `.42cog/spec/runtime-command-policy.md`
+- User-visible plugin behavior: `.42cog/spec/plugin-behavior-contracts.md`
+- QA matrix and Test Ladder: `.42cog/spec/qa-zotero-verification.md`
+- Dependency/release policy: `.42cog/spec/dependency-policy.md`
 
 ## 7. Review And Fix
 
@@ -101,29 +105,43 @@ Use focused self-review for simple low-risk tasks. Use `.codex/skills/zotero-rev
 - UI/runtime behavior
 - watchdog/queue/NEXT/PERSIST automation
 - complex or high-risk code tasks
-- PR handoff or Issue closure with behavior risk
+- CNB handoff or Issue closure with behavior risk
 
-P0/P1/P2 findings block completion. Fix in rounds, then rerun relevant verification and review.
+P0/P1 findings always block completion. P2 blocks only when it affects correctness, data safety, regression, verification, git scope, release, or security. Fix blocking findings in rounds, then rerun relevant verification and review.
+
+After a CNB pull is open, CNB review feedback, comments, status checks, and conflict state are part of the autonomous loop. Blocking CNB feedback returns the task to the same branch for a fix round; non-blocking suggestions are recorded and do not block the CNB merge gate.
 
 ## 8. Git And Persistence
+
+Default branch workflow:
+
+- Do not do task work directly on `main`.
+- Start each `repo-change` or versioned `agent-process-maintenance` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
+- Commit, push to CNB, and open a CNB pull from the task branch.
+- Do not merge a CNB pull by personal judgment or self-review alone. Merge only through the CNB merge gate: no conflicts or blocking feedback, and all configured required gates are satisfied, whether those gates are CI/status checks, code review, or both. Explicit user confirmation is required only for overriding that gate.
+- Emergency direct commits to `main` require explicit user confirmation and must be recorded in the run notes.
 
 For completed `repo-change` tasks:
 
 - update `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and useful `.ai/memory/`
 - create one controlled git checkpoint commit
-- close the CNB Issue only after verification, review, and checkpoint pass
+- create a CNB pull after verification, review, and checkpoint pass
+- close the CNB Issue only after the CNB pull is merged or the user explicitly asks to close it
 
 For versioned `agent-process-maintenance` changes:
 
 - update local `.ai` task/run records
 - create a controlled git checkpoint commit
+- create a CNB pull after verification, review, and checkpoint pass
 - do not create or close a CNB Issue unless the user explicitly requested remote tracking
 
 Git rules:
 
 - never use `git add .` or `git add -A`
 - stage only Commit Scope files
-- do not stage `.ai/`, `.42cog/`, `.codex/`, logs, caches, env files, secrets, or local sessions unless explicitly versioned by the task
+- `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` are `.ai local runtime state`: update them when needed, but do not stage them
+- versioned process/spec assets may include `AGENTS.md`, `.ai/WORKFLOW.md`, `.ai/prompts/**`, `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
+- do not stage logs, caches, env files, secrets, local sessions, or unrelated ignored files
 - run `git diff --cached --name-only` and `git diff --cached --check` before commit
 - if in-scope files mix user changes with task changes, stop with `NEED_HUMAN_DECISION`
 
@@ -147,9 +165,10 @@ HEARTBEAT_OK
 - non-goals preserved
 - acceptance criteria met
 - necessary tests or equivalent verification passed
-- review has no unresolved P0/P1/P2
+- review has no unresolved blocking findings
 - checkpoint commit completed when required
-- CNB Issue closed when required
+- CNB pull opened when branch workflow applies
+- CNB Issue closed only when the CNB pull is merged, direct-main flow applies, or the user explicitly requested closure
 
 `PASS` format:
 
@@ -160,9 +179,12 @@ Done:
 - <actual change>
 Verification:
 - <command/check>: <result>
+CNB Review: <clean | pending_merge_gate | ready_to_merge | fixed_blocking_feedback | not_applicable>
 Commit: <hash or N/A — no repository changes>
 Notes: <none or residual risk>
 ```
+
+For branch workflow, `PASS` may include `State: CNB_REVIEW_OPEN`, meaning Agent work is complete and waiting for the CNB merge gate; the Issue can remain open until merge.
 
 Do not say “basically done”, “should work”, or “probably fine” as completion.
 
@@ -175,6 +197,6 @@ Keep `AGENTS.md` short and practical. Add durable detail elsewhere:
 - `.ai/tasks/` and `.ai/runs/`: local task/run records
 - `.ai/memory/`: reusable local lessons
 - `.42cog/`: Real/Cog/RCSW project model
-- `spec/`: product, design, architecture, QA specifications
+- `.42cog/spec/` and `spec/`: product, design, architecture, coding, QA, dependency, release, and domain specifications
 
-When this file grows because of repeated edge cases, extract the edge-case procedure into a skill, local workflow doc, or task-specific reference, then leave only the trigger and hard constraint here.
+When this file grows because of repeated edge cases, extract the edge-case procedure into a skill, local workflow doc, task-specific reference, or a 42COG/spec document, then leave only the trigger and hard constraint here.

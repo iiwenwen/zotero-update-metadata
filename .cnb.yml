@@ -1,4 +1,5 @@
 # Sync CNB main to GitHub main after every CNB push.
+# GitHub is a mirror target only; project workflow and review stay on CNB.
 #
 # Required secret variables in CNB:
 # - GIT_USERNAME: GitHub username, or x-access-token for token auth

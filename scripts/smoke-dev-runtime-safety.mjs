@@ -23,9 +23,9 @@ const legacyUnsafeScriptNames = new Set([
 const forbiddenPackageScriptNames = [
   /^debug(?::|$)/,
   /^devtools(?::|$)/,
+  /^reload(?::|$)/,
   /^stop$/,
 ];
-const allowedRuntimePackageScriptNames = [/^reload(?::|$)/];
 
 const forbiddenExecutableTokens = [
   "zotero://",
@@ -64,11 +64,6 @@ for (const scriptName of Object.keys(packageScripts)) {
 }
 
 for (const [scriptName, command] of Object.entries(packageScripts)) {
-  if (
-    allowedRuntimePackageScriptNames.some((pattern) => pattern.test(scriptName))
-  ) {
-    continue;
-  }
   assertSafeText(`package.json scripts.${scriptName}`, command);
 }
 
