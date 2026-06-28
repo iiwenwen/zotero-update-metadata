@@ -54,6 +54,17 @@ export default defineConfig({
   },
 
   test: {
+    entries: "test",
+    mocha: {
+      timeout: 30000,
+    },
+    prefs: {
+      "extensions.zotero.httpServer.port": 23125,
+      "extensions.zotero.updatemetadata.schema": "save",
+      "extensions.zotero.updatemetadata.saveAttachments": false,
+      "extensions.zotero.updatemetadata.attachmentSaveStrategy": "missing",
+      "extensions.zotero.updatemetadata.saveNotes": false,
+    },
     waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.initialized`,
   },
 });

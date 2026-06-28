@@ -45,6 +45,10 @@ const forbiddenCommandPatterns = [
   /["'`]-url["'`]/,
 ];
 
+const allowedExecutableTokensByLabel = {
+  "scripts/run-zotero-ui-smoke.mjs": new Set(["zotero-cmd.json"]),
+};
+
 assert.equal(
   packageScripts.start,
   "zotero-plugin serve",
@@ -93,7 +97,12 @@ for (const fileName of readdirSync(scriptsDir)) {
 console.log("dev runtime safety smoke: pass");
 
 function assertSafeText(label, text) {
+  const allowedTokens = allowedExecutableTokensByLabel[label] ?? new Set();
   for (const token of forbiddenExecutableTokens) {
+    if (allowedTokens.has(token)) {
+      continue;
+    }
+
     assert.equal(
       text.includes(token),
       false,

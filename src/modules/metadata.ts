@@ -70,10 +70,16 @@ export type SaveNewMetadataItemResult = {
   item: Zotero.Item;
 };
 
+const METADATA_LOG_PREFIX = "[metadata]";
+
 export type MetadataRunContext = {
   win?: _ZoteroTypes.MainWindow;
   items?: Zotero.Item[];
   collectionID?: number;
+};
+
+type MainWindowWithPane = _ZoteroTypes.MainWindow & {
+  ZoteroPane?: _ZoteroTypes.ZoteroPane;
 };
 
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
@@ -169,6 +175,11 @@ export async function getMeta(context: MetadataRunContext = {}) {
   }
 
   const summary = createBatchUpdateSummary();
+  logMetadataEvent("batch-start", {
+    schema,
+    itemCount: items.length,
+    collectionID: context.collectionID,
+  });
 
   for (const [index, item] of items.entries()) {
     const current = `${index + 1}/${items.length}`;
@@ -206,13 +217,25 @@ export async function getMeta(context: MetadataRunContext = {}) {
       if (!translatedItem) {
         throw new Error("No translated metadata found");
       }
+      logMetadataEvent("translation-selected", {
+        schema,
+        itemID: item.id,
+        provider: translatedResult.provider,
+        attempts: translatedResult.attempts,
+      });
 
       if (schema === "save") {
-        await saveNewMetadataItem(translatedItem, settings);
+        const saveResult = await saveNewMetadataItem(translatedItem, settings);
+        await revealSavedMetadataItem(saveResult.item, context.win);
         summary.success += 1;
         if (translatedResult.provider !== "douban-url") {
           summary.fallback += 1;
         }
+        logMetadataEvent("save-new-result", {
+          sourceItemID: item.id,
+          savedItemID: saveResult.item.id,
+          provider: translatedResult.provider,
+        });
         popWin.changeLine({
           type: "success",
           progress: 0,
@@ -244,6 +267,10 @@ export async function getMeta(context: MetadataRunContext = {}) {
       });
     } catch (err) {
       ztoolkit.log(err);
+      logMetadataEvent("item-error", {
+        itemID: item.id,
+        error: getErrorMessage(err),
+      });
       summary.failed += 1;
       recordReason(summary, getErrorMessage(err));
       popWin
@@ -269,6 +296,7 @@ export async function getMeta(context: MetadataRunContext = {}) {
       idx: 2 + offset,
     });
   });
+  logMetadataEvent("batch-finish", summary);
   popWin.startCloseTimer(METADATA_RESULT_CLOSE_TIME_MS);
 }
 
@@ -808,6 +836,16 @@ export async function saveNewMetadataItem(
       ? settings.libraryID
       : Zotero.Libraries.userLibraryID;
 
+  logMetadataEvent("save-new-start", {
+    itemType,
+    title: itemJSON.title,
+    libraryID,
+    saveAttachments: settings.saveAttachments,
+    attachmentCount: Array.isArray(itemJSON.attachments)
+      ? itemJSON.attachments.length
+      : 0,
+  });
+
   (item as any).libraryID = libraryID;
   item.fromJSON(getPrimaryMetadataForSave(itemJSON), { strict: false });
 
@@ -820,10 +858,55 @@ export async function saveNewMetadataItem(
     saveAttachments: settings.saveAttachments,
   });
 
+  logMetadataEvent("save-new-finish", {
+    savedItemID: item.id,
+    title: itemJSON.title,
+    libraryID,
+    attachmentCount:
+      typeof item.getAttachments === "function"
+        ? item.getAttachments().length
+        : undefined,
+  });
+
   return {
     status: "saved",
     item,
   };
+}
+
+export async function revealSavedMetadataItem(
+  item: Zotero.Item,
+  win?: _ZoteroTypes.MainWindow,
+) {
+  const pane =
+    (win as MainWindowWithPane | undefined)?.ZoteroPane ??
+    Zotero.getActiveZoteroPane?.();
+
+  if (!item.id || !pane?.selectItems) {
+    logMetadataEvent("save-new-reveal-skipped", {
+      savedItemID: item.id,
+      reason: "missing ZoteroPane selection API",
+    });
+    return false;
+  }
+
+  try {
+    const collectionIDs =
+      typeof item.getCollections === "function" ? item.getCollections() : [];
+    const selected = await pane.selectItems([item.id], !collectionIDs.length);
+    logMetadataEvent("save-new-reveal-finish", {
+      savedItemID: item.id,
+      selected,
+      inLibraryRoot: !collectionIDs.length,
+    });
+    return selected !== false;
+  } catch (err) {
+    logMetadataEvent("save-new-reveal-error", {
+      savedItemID: item.id,
+      error: getErrorMessage(err),
+    });
+    return false;
+  }
 }
 
 function normalizeSaveableMetadataItem(newItem: any) {
@@ -854,6 +937,14 @@ function getPrimaryMetadataForSave(newItem: any) {
   } = newItem;
 
   return metadata;
+}
+
+function logMetadataEvent(event: string, data?: unknown) {
+  try {
+    ztoolkit.log(`${METADATA_LOG_PREFIX} ${event}`, data ?? "");
+  } catch {
+    // Logging must never affect metadata writes.
+  }
 }
 
 async function updateItem(
