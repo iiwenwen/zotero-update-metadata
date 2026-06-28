@@ -25,8 +25,8 @@ if (!command) {
   process.exit(0);
 }
 
-const normalized = command.replace(/\s+/g, " ").trim();
-const lower = normalized.toLowerCase();
+const commandSurface = stripNonShellHereDocs(command).replace(/\s+/g, " ").trim();
+const lower = commandSurface.toLowerCase();
 
 const denyRules = [
   {
@@ -82,7 +82,7 @@ const denyRules = [
 ];
 
 for (const rule of denyRules) {
-  if (rule.pattern.test(normalized)) {
+  if (rule.pattern.test(commandSurface)) {
     deny(rule.reason);
   }
 }
@@ -119,4 +119,31 @@ function allowWithContext(message) {
     }),
   );
   process.exit(0);
+}
+
+function stripNonShellHereDocs(shellCommand) {
+  const lines = shellCommand.split(/\r?\n/);
+  const kept = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    kept.push(line);
+
+    const marker = line.match(/<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/);
+    if (!marker) {
+      continue;
+    }
+
+    if (/(^|[;&|]\s*)(ba)?sh\b|(^|[;&|]\s*)zsh\b/.test(line)) {
+      kept.push(";");
+      continue;
+    }
+
+    const delimiter = marker[1];
+    while (index + 1 < lines.length && lines[index + 1].trim() !== delimiter) {
+      index += 1;
+    }
+  }
+
+  return kept.join("\n");
 }
