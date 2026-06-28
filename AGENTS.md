@@ -58,7 +58,7 @@ Use the smallest planning level that fits the task.
 - Record `certainty`, `risk`, and `intent_self_check` before execution.
 - `LOW` certainty or `HIGH` risk means `NEED_HUMAN_DECISION`.
 
-High-risk operations always need explicit human confirmation: deleting many files, deleting user data, changing migrations, backup/restore formats, security boundaries, permissions, releases, merging to `main`, deleting branches, rewriting git history, overwriting user changes, or touching a real Zotero profile/library.
+High-risk operations always need explicit human confirmation: deleting many files, deleting user data, changing migrations, backup/restore formats, security boundaries, permissions, releases, bypassing the CNB merge gate, deleting branches, rewriting git history, overwriting user changes, or touching a real Zotero profile/library.
 
 Every non-trivial task must align with 42COG/RCSW using the minimum necessary files:
 
@@ -109,7 +109,7 @@ Use focused self-review for simple low-risk tasks. Use `.codex/skills/zotero-rev
 
 P0/P1 findings always block completion. P2 blocks only when it affects correctness, data safety, regression, verification, git scope, release, or security. Fix blocking findings in rounds, then rerun relevant verification and review.
 
-After a CNB pull is open, CNB review feedback, comments, status checks, and conflict state are part of the autonomous loop. Blocking CNB feedback returns the task to the same branch for a fix round; non-blocking suggestions are recorded without merging.
+After a CNB pull is open, CNB review feedback, comments, status checks, and conflict state are part of the autonomous loop. Blocking CNB feedback returns the task to the same branch for a fix round; non-blocking suggestions are recorded and do not block the CNB merge gate.
 
 ## 8. Git And Persistence
 
@@ -118,7 +118,7 @@ Default branch workflow:
 - Do not do task work directly on `main`.
 - Start each `repo-change` or versioned `agent-process-maintenance` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
 - Commit, push to CNB, and open a CNB pull from the task branch.
-- Do not merge the CNB pull yourself unless the user explicitly asks and confirms.
+- Do not merge a CNB pull by personal judgment or self-review alone. Merge only through the CNB merge gate: no conflicts or blocking feedback, and all configured required gates are satisfied, whether those gates are CI/status checks, code review, or both. Explicit user confirmation is required only for overriding that gate.
 - Emergency direct commits to `main` require explicit user confirmation and must be recorded in the run notes.
 
 For completed `repo-change` tasks:
@@ -179,12 +179,12 @@ Done:
 - <actual change>
 Verification:
 - <command/check>: <result>
-CNB Review: <clean | pending_human_merge | fixed_blocking_feedback | not_applicable>
+CNB Review: <clean | pending_merge_gate | ready_to_merge | fixed_blocking_feedback | not_applicable>
 Commit: <hash or N/A — no repository changes>
 Notes: <none or residual risk>
 ```
 
-For branch workflow, `PASS` may include `State: CNB_REVIEW_OPEN`, meaning Agent work is complete and waiting for CNB review/merge; the Issue can remain open until merge.
+For branch workflow, `PASS` may include `State: CNB_REVIEW_OPEN`, meaning Agent work is complete and waiting for the CNB merge gate; the Issue can remain open until merge.
 
 Do not say “basically done”, “should work”, or “probably fine” as completion.
 

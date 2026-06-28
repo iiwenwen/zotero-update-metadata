@@ -196,7 +196,7 @@ HEARTBEAT_OK
 watchdog/queue mode 必须使用最小状态机：
 
 ```text
-READY -> CLAIMED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> CNB_REVIEW_OPEN -> MERGED -> DONE
+READY -> CLAIMED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> CNB_REVIEW_OPEN -> READY_TO_MERGE -> MERGED -> DONE
 ```
 
 异常状态：
@@ -207,7 +207,7 @@ NEED_HUMAN_DECISION
 SKIPPED
 ```
 
-`CNB_REVIEW_OPEN` 表示 Agent 工作已完成并等待 CNB review/merge。watchdog 不得把 `CNB_REVIEW_OPEN` 任务重新选为可执行任务，除非 CNB pull 更新、冲突、CI 失败、review comment 或用户明确要求继续处理。
+`CNB_REVIEW_OPEN` 表示 Agent 工作已完成并等待 CNB merge gate。watchdog 不得把 `CNB_REVIEW_OPEN` 任务重新选为普通执行任务，除非 CNB pull 更新、冲突、CI/status 变化、review comment、merge gate 满足或用户明确要求继续处理。
 
 `.ai/watchdog.lock` 必须至少包含：
 
@@ -235,6 +235,7 @@ branch:
 cnb_pull:
 review_status:
 review_updated_at:
+merge_gate:
 last_attempt_at:
 failure_count:
 blocker:
@@ -933,13 +934,13 @@ FAIL
 
 ### 10.2 CNB_PULL_REVIEW：CNB 合并请求审核闭环
 
-`CNB_REVIEW_OPEN` 不是“无人再看”的完成态；它表示 Agent work complete，等待 CNB review/merge。watchdog 或用户要求继续处理该状态时，必须先读取 CNB pull 审核信号，再决定是否回到修复循环。
+`CNB_REVIEW_OPEN` 不是“无人再看”的完成态；它表示 Agent work complete，等待 CNB merge gate。watchdog 或用户要求继续处理该状态时，必须先读取 CNB pull 审核信号、CI/status 和冲突状态，再决定等待、修复、进入 merge gate 或标记已合并。
 
 触发条件：
 
-- CNB pull 有新评论、评审、状态检查失败、冲突或 base/head 更新
+- CNB pull 有新评论、评审、状态检查变化、冲突、base/head 更新或 merge gate 可能满足
 - 用户要求“继续处理审核意见”“检查合并请求”“处理 review”
-- `.ai/QUEUE.md` 中 `review_status` 不是 `clean` 或 `pending_human_merge`
+- `.ai/QUEUE.md` 中 `review_status` 不是 `clean` 或 `pending_merge_gate`
 
 读取来源：
 
@@ -960,6 +961,14 @@ cnb_pull_review:
   state:
   blocked_on:
   status_checks:
+  code_review:
+  merge_gate:
+    ci_required: true | false | unknown
+    ci_passed: true | false | not_required | unknown
+    code_review_required: true | false | unknown
+    code_review_approved: true | false | not_required | unknown
+    conflicts: true | false | unknown
+    decision: pending_merge_gate | ready_to_merge | fix_same_branch | need_human_decision | merged
   comments_checked: true | false
   reviews_checked: true | false
   files_checked: true | false
@@ -969,13 +978,14 @@ cnb_pull_review:
     P2: []
   nonblocking_findings:
     P3: []
-  action: no_action | fix_same_branch | need_human_decision | blocked
+  action: no_action | fix_same_branch | ready_to_merge | mark_merged | need_human_decision | blocked
 ```
 
 分流规则：
 
 - CNB pull 已合并：更新本地队列为 `MERGED`；若对应 CNB Issue 存在，再按 Issue Closure Gate 处理。
-- 没有新审核信号且状态可继续等待：保持 `CNB_REVIEW_OPEN`，记录 `review_status: pending_human_merge`，输出 `HEARTBEAT_OK` 或当前任务 `PASS` 摘要。
+- CNB pull 未合并但无冲突、无阻塞反馈，并且项目配置的 required gates 全部满足时进入 `READY_TO_MERGE`。required gates 可以是 CI/status、code review 或两者；未配置的 gate 记录为 `not_required`。合并成功后进入 `MERGED`。
+- 没有新审核信号且 merge gate 尚未满足：保持 `CNB_REVIEW_OPEN`，记录 `review_status: pending_merge_gate`，输出 `HEARTBEAT_OK` 或当前任务 `PASS` 摘要。
 - 存在 P0/P1 或涉及 correctness、data safety、regression、verification、git scope、release、security 的 P2：将任务从 `CNB_REVIEW_OPEN` 拉回 `IN_PROGRESS`，在同一分支最小修复，复跑 VERIFY / REVIEW / HANDOFF_SELF_REVIEW，commit 后推送同一个 CNB pull。
 - 只有 P3 或记录性 P2：写入 `.ai/runs/` 和 CNB pull 评论摘要，不阻塞 handoff。
 - 冲突、状态检查失败或审核意见无法理解：记录 blocker；可自主定位则 `fix_same_branch`，需要产品/权限/合并判断则 `NEED_HUMAN_DECISION`。
@@ -985,7 +995,8 @@ cnb_pull_review:
 - 为同一审核意见新建无关分支或新 CNB pull
 - 未读取 CNB comments / reviews / status checks 就宣称审核通过
 - 在审核反馈未清零时关闭 CNB Issue 或把本地队列标记为 `DONE`
-- Agent 自行合并 CNB pull，除非用户明确要求并确认
+- 以 Agent 自审替代 CI/status 或 required code review
+- 绕过 merge gate 强行合并；只有用户明确确认 override 时，才可执行不满足 gate 的合并
 
 ---
 
@@ -1116,15 +1127,16 @@ ISSUE = 任务本体
 3. E2E 或等价端到端验证已完成；不适用时已记录原因和替代验证
 4. Review 没有 P0/P1/P2 必修问题；`SIMPLE` 可做 focused self-review，`COMPLEX` 或 `HIGH risk` 必须做 structured review
 5. 如需 CNB handoff，`HANDOFF_SELF_REVIEW` 已通过
-6. 如任务处于 `CNB_REVIEW_OPEN` 且被重新唤醒，`CNB_PULL_REVIEW` 已读取 CNB comments、reviews、status checks 和 files，并无阻塞反馈
+6. 如任务处于 `CNB_REVIEW_OPEN` 且被重新唤醒，`CNB_PULL_REVIEW` 已读取 CNB comments、reviews、status checks 和 files，并判断 merge gate 是否满足
 7. 受控 git checkpoint commit 已完成
 
-默认分支工作流下，Agent 完成验证、自审、commit、push 并创建 CNB pull 后，任务状态为 `CNB_REVIEW_OPEN`。`CNB_REVIEW_OPEN` 是合法交付终态，表示 Agent work complete, awaiting CNB review/merge。此时：
+默认分支工作流下，Agent 完成验证、自审、commit、push 并创建 CNB pull 后，任务状态为 `CNB_REVIEW_OPEN`。`CNB_REVIEW_OPEN` 是合法交付终态，表示 Agent work complete, awaiting CNB merge gate。此时：
 
 - 可以输出 `PASS`
 - 本地队列状态保持 `CNB_REVIEW_OPEN`
 - CNB Issue 保持 open，直到 CNB pull merged 或用户明确要求关闭
-- watchdog 不得重复执行该任务，除非 CNB pull 更新、冲突、CI 失败、review comment 或用户明确要求继续处理；重新执行时先进入 `CNB_PULL_REVIEW`
+- watchdog 不得重复执行该任务，除非 CNB pull 更新、冲突、CI/status 变化、review comment、merge gate 满足或用户明确要求继续处理；重新执行时先进入 `CNB_PULL_REVIEW`
+- 当 merge gate 满足时，进入 `READY_TO_MERGE`；合并完成后进入 `MERGED`，再按 Issue Closure Gate 关闭或保留对应 CNB Issue。
 
 如果功能测试不完整，即使代码已经修改、构建已经通过，也不得关闭 Issue，不得把任务标记为 Done，不得输出 `PASS`。
 
@@ -1164,8 +1176,9 @@ Commit: N/A — no repository changes
 2. 从最新可用的 `main` 创建任务分支，默认命名为 `codex/<task-slug>`；用户指定分支名时按用户要求。
 3. 所有实现、验证、commit、push 都在任务分支完成。
 4. VERIFY、REVIEW、HANDOFF_SELF_REVIEW 全部通过后，创建 CNB pull。
-5. 除非用户明确要求并确认，不得由 Agent 自行合并 CNB pull。
-6. CNB pull 创建后将本地队列状态设为 `CNB_REVIEW_OPEN`；只有 CNB pull 合并后，才关闭对应 CNB Issue；如果用户明确要求先关闭，必须在 run 记录原因。
+5. CNB pull 创建后将本地队列状态设为 `CNB_REVIEW_OPEN`，等待 CNB merge gate。
+6. Agent 不得凭个人判断或自审直接合并；只有无冲突、无阻塞 review，且项目配置的 required gates 已全部满足时，才能进入 `READY_TO_MERGE` 并合并或等待平台自动合并。required gates 可以是 CI/status、code review 或两者；绕过 gate 必须有用户明确确认。
+7. 只有 CNB pull 合并后，才关闭对应 CNB Issue；如果用户明确要求先关闭，必须在 run 记录原因。
 
 允许例外：
 
@@ -1247,21 +1260,21 @@ Verification:
 ```text
 PASS
 Task: <source:id> <title>
-State: <DONE | CNB_REVIEW_OPEN>
+State: <DONE | CNB_REVIEW_OPEN | READY_TO_MERGE | MERGED>
 Done:
 - <完成事项 1>
 - <完成事项 2>
 Verification:
 - <命令或检查>: <结果>
 CNB Review:
-- <clean | pending_human_merge | fixed_blocking_feedback | not_applicable>
+- <clean | pending_merge_gate | ready_to_merge | fixed_blocking_feedback | not_applicable>
 Commit: <hash>
 CNB Pull: <url or N/A>
 Issue: <closed | open until CNB pull merge | N/A>
 Notes: <none 或剩余风险>
 ```
 
-禁止只输出裸 `PASS`。`PASS` 后必须说明当前任务完成程度、验证结果、真实 commit hash、CNB handoff / Issue 状态和遗留风险。默认分支工作流下，`State: CNB_REVIEW_OPEN` 表示 Agent work complete, awaiting CNB review/merge。
+禁止只输出裸 `PASS`。`PASS` 后必须说明当前任务完成程度、验证结果、真实 commit hash、CNB handoff / Issue 状态和遗留风险。默认分支工作流下，`State: CNB_REVIEW_OPEN` 表示 Agent work complete, awaiting CNB merge gate。
 
 然后必须执行 NEXT 决策，而不是默认结束：
 
