@@ -16,8 +16,6 @@ let registeredSectionKey: string | null = null;
 let registeredStyleURI: nsIURI | null = null;
 
 type SectionHookArgs = _ZoteroTypes.ItemPaneManagerSection.SectionHookArgs;
-type SectionInitHookArgs =
-  _ZoteroTypes.ItemPaneManagerSection.SectionInitHookArgs;
 
 export function registerMetadataPreviewPane() {
   registerMetadataPreviewStyles();
@@ -38,7 +36,7 @@ export function registerMetadataPreviewPane() {
       l10nID: `${config.addonRef}-metadata-preview-pane-label`,
     },
     bodyXHTML: `<div class="metadata-preview-pane"></div>`,
-    onInit: (props) => renderInitialState(props),
+    onRender: renderInitialState,
     onAsyncRender: renderMetadataPreview,
   });
 
@@ -101,7 +99,7 @@ function getStyleSheetService() {
   ].getService(Components.interfaces.nsIStyleSheetService);
 }
 
-function renderInitialState(props: SectionInitHookArgs) {
+function renderInitialState(props: SectionHookArgs) {
   const root = getPreviewRoot(props.body);
   renderMessage(root, getString("metadata-preview-pane-loading"));
 }

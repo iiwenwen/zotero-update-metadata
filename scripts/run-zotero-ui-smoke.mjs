@@ -10,6 +10,7 @@ const requiredLogMarkers = [
   "metadata-runtime-translation-settings",
   "metadata-runtime-confirm-canceled",
   "metadata-runtime-confirm-applied",
+  "metadata-runtime-preview-pane-registered",
   "metadata-runtime-save-new",
   "savedItemID",
   "attachmentCount",

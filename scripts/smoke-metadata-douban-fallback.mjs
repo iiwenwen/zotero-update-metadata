@@ -1081,6 +1081,11 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
   };
   globalThis.Zotero.ItemPaneManager = {
     registerSection(options) {
+      assert.equal(
+        typeof options.onRender,
+        "function",
+        "Zotero requires custom item-pane sections to provide onRender",
+      );
       registeredSections.push(options);
       return "metadata-preview-section";
     },
@@ -1114,6 +1119,7 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
     registeredSections[0].header.l10nID,
     "updatemetadata-metadata-preview-pane-label",
   );
+  assert.equal(typeof registeredSections[0].onRender, "function");
   assert.equal(typeof registeredSections[0].onAsyncRender, "function");
   assert.equal(
     registeredSheets.has("chrome://updatemetadata/content/zoteroPane.css"),
@@ -1121,6 +1127,27 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
   );
 
   const body = createPreviewBody();
+  registeredSections[0].onRender({
+    body,
+    item: createMockItem({
+      itemTypeID: 1,
+      fields: {
+        url: "https://book.douban.com/subject/1355643/",
+      },
+      tags: [],
+    }),
+    tabType: "library",
+    editable: true,
+    setEnabled(value) {
+      return !value;
+    },
+    setSectionSummary(value) {
+      return value;
+    },
+    setL10nArgs() {},
+    setSectionButtonStatus() {},
+  });
+
   let enabled = null;
   let summary = "";
   return Promise.resolve(
