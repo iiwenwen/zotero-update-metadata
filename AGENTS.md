@@ -14,15 +14,16 @@ This project is a Zotero desktop plugin. Treat Zotero user-library data as high 
 
 Classify each user request first:
 
-- `repo-change`: code, tests, product docs, build/config/release, or anything that creates a versioned project artifact. Must create or bind a CNB Issue before execution.
-- `agent-process-maintenance`: changes only to agent behavior, such as `AGENTS.md`, `.codex/skills/`, or prompt/workflow governance. Do not create a CNB Issue by default; use local task/run records and a controlled git checkpoint if versioned files change.
+- `repo-change`: code, tests, product docs, build/config/release, or product/project artifacts for collaborators. Must create or bind a CNB Issue before execution.
+- `versioned-governance-change`: tracked governance assets such as `AGENTS.md`, tracked `.codex/skills/**`, or `.42cog/spec/**` when explicitly in scope. Do not create a CNB Issue by default; use local task/run records and the branch/checkpoint/CNB pull flow.
+- `local-agent-maintenance`: ignored local control-plane state such as `.ai/**`, local prompts, local runs, queues, and ignored skill discovery symlinks. Do not create a CNB Issue, branch, commit, push, or CNB pull.
 - `no-change review/advice`: audit, explanation, comparison, or recommendation only. Do not create Issues, queue state, commits, or fake checkpoints. Final output must say `Commit: N/A — no repository changes`.
 
 If a user report contains multiple independent problems, split by user-visible behavior. Handle only one task at a time unless the same root cause, same files, same risk, and same verification fully cover all symptoms.
 
 ## 3. Required Startup Context
 
-For `repo-change`, `agent-process-maintenance`, watchdog, or queue work, read in order:
+For `repo-change`, `versioned-governance-change`, `local-agent-maintenance`, watchdog, or queue work, read in order:
 
 1. `AGENTS.md`
 2. Local `.ai/WORKFLOW.md`, `.ai/STATE.md`, and `.ai/QUEUE.md` only when present
@@ -111,10 +112,16 @@ After a CNB pull is open, CNB review feedback, comments, status checks, and conf
 
 ## 8. Git And Persistence
 
+Tool boundary:
+
+- Use `git` for local repository truth: worktrees, branches, diffs, staging, commits, fetch, pull, push, and the commit graph.
+- Use CNB CLI for CNB platform truth: Issues, pulls, comments, reviews, status checks, conflicts, mergeability, merge gate, and Issue closure.
+- When `git` and CNB CLI disagree, re-read both surfaces. Trust `git` for repository state and CNB CLI for platform gate state; do not infer one from the other.
+
 Default branch workflow:
 
-- Do not do task work directly on `main`.
-- Start each `repo-change` or versioned `agent-process-maintenance` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
+- Do not do `repo-change` or `versioned-governance-change` work directly on `main`.
+- Start each `repo-change` or `versioned-governance-change` task from an up-to-date `main`, then create a task branch with the `codex/` prefix unless the user requests another name.
 - Commit, push to CNB, and open a CNB pull from the task branch.
 - Do not merge a CNB pull by personal judgment or self-review alone. Merge only through the CNB merge gate: no conflicts or blocking feedback, and all configured required gates are satisfied, whether those gates are CI/status checks, code review, or both. Explicit user confirmation is required only for overriding that gate.
 - Emergency direct commits to `main` require explicit user confirmation and must be recorded in the run notes.
@@ -126,19 +133,25 @@ For completed `repo-change` tasks:
 - create a CNB pull after verification, review, and checkpoint pass
 - close the CNB Issue only after the CNB pull is merged or the user explicitly asks to close it
 
-For versioned `agent-process-maintenance` changes:
+For completed `versioned-governance-change` tasks:
 
 - update local `.ai` task/run records
-- create a controlled git checkpoint commit
+- create a controlled git checkpoint commit for tracked governance files
 - create a CNB pull after verification, review, and checkpoint pass
 - do not create or close a CNB Issue unless the user explicitly requested remote tracking
+
+For `local-agent-maintenance` tasks:
+
+- update local `.ai` task/run records when useful
+- keep changes local-only and ignored by Git
+- do not create a CNB Issue, branch, commit, push, or CNB pull
 
 Git rules:
 
 - never use `git add .` or `git add -A`
 - stage only Commit Scope files
 - `.ai/STATE.md`, `.ai/QUEUE.md`, `.ai/runs/`, and `.ai/memory/` are `.ai local runtime state`: update them when needed, but do not stage them
-- versioned process/spec assets may include `AGENTS.md`, `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
+- versioned governance/spec assets may include `AGENTS.md`, tracked `.codex/skills/**`, and `.42cog/spec/**` when explicitly in scope
 - `.ai/**` is local-only AI autonomous workflow/runtime state and must not be staged
 - do not stage logs, caches, env files, secrets, local sessions, or unrelated ignored files
 - run `git diff --cached --name-only` and `git diff --cached --check` before commit
