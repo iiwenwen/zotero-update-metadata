@@ -24,6 +24,27 @@ message-updateItem-skip = updateItem skipped
 message-getMeta-error = get metadata failed
 
 metadata-preview-title = Confirm metadata update
+metadata-preview-pane-label = Metadata Preview
+metadata-preview-pane-loading = Generating preview...
+metadata-preview-pane-provider = Source
+metadata-preview-pane-updatable = Can update
+metadata-preview-pane-skipped = Unchanged/skipped
+metadata-preview-pane-empty = No safe metadata changes
+metadata-preview-pane-error = Preview failed
+metadata-preview-pane-unavailable = Preview unavailable for this item
+metadata-preview-pane-missing-url = This item has no URL
+metadata-preview-pane-unsupported-url = This item URL is not supported
+metadata-preview-pane-summary-ready =
+    { $count ->
+        [one] 1 update
+       *[other] { $count } updates
+    }
+metadata-preview-pane-summary-empty = No updates
+metadata-preview-pane-summary-error = Preview failed
+metadata-preview-pane-summary-unavailable = Unavailable
+metadata-preview-field-creators = Creators
+metadata-preview-field-tags = Tags
+metadata-preview-field-itemType = Item type
 batch-summary-title = Summary
 batch-summary-success = success
 batch-summary-failed = failed

@@ -1049,13 +1049,13 @@ async function saveMetadataNote(newItem: any, oldItem: Zotero.Item) {
   await saveNote(newItem, oldItem);
 }
 
-type MetadataChange = {
+export type MetadataChange = {
   field: string;
   oldValue: unknown;
   newValue: unknown;
 };
 
-type MetadataSkip = {
+export type MetadataSkip = {
   field: string;
   reason: string;
 };
@@ -1076,6 +1076,27 @@ export type MetadataUpdateResult = {
   update: SafeMetadataUpdateResult;
   item: Zotero.Item;
 };
+
+export type MetadataUpdatePreviewForItemResult =
+  | {
+      status: "ready";
+      provider: string;
+      attempts: MetadataProviderAttempt[];
+      update: SafeMetadataUpdateResult;
+    }
+  | {
+      status: "skipped";
+      reason: string;
+      update: SafeMetadataUpdateResult;
+    }
+  | {
+      status: "unavailable";
+      reason: string;
+    }
+  | {
+      status: "error";
+      error: string;
+    };
 
 const NO_SAFE_CHANGES_REASON = "no safe metadata changes";
 
@@ -1123,6 +1144,62 @@ export function buildMetadataUpdatePreview(newItem: any, oldItem: Zotero.Item) {
   );
 }
 
+export async function previewMetadataUpdateForItem(
+  item: Zotero.Item,
+  collectionID?: number,
+): Promise<MetadataUpdatePreviewForItemResult> {
+  if (!item?.isRegularItem?.()) {
+    return {
+      status: "unavailable",
+      reason: "not a regular item",
+    };
+  }
+
+  const url = item.getField("url");
+  if (!cleanText(url)) {
+    return {
+      status: "unavailable",
+      reason: "missing URL",
+    };
+  }
+
+  if (!isSupportedMetadataURL(url)) {
+    return {
+      status: "unavailable",
+      reason: "unsupported URL",
+    };
+  }
+
+  try {
+    const translatedResult = await translateMetadataForItem(
+      url,
+      item,
+      buildMetadataTranslationSettings(getSettings(collectionID, "update")),
+    );
+    const update = buildMetadataUpdatePreview(translatedResult.item, item);
+
+    if (!update.applied.length) {
+      return {
+        status: "skipped",
+        reason: NO_SAFE_CHANGES_REASON,
+        update,
+      };
+    }
+
+    return {
+      status: "ready",
+      provider: translatedResult.provider,
+      attempts: translatedResult.attempts,
+      update,
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      error: getErrorMessage(err),
+    };
+  }
+}
+
 export function formatMetadataUpdatePreview(result: SafeMetadataUpdateResult) {
   const lines: string[] = [];
 
@@ -1131,9 +1208,9 @@ export function formatMetadataUpdatePreview(result: SafeMetadataUpdateResult) {
       continue;
     }
     lines.push(
-      `${change.field}: ${formatPreviewValue(
+      `${change.field}: ${formatMetadataPreviewValue(
         change.oldValue,
-      )} -> ${formatPreviewValue(change.newValue)}`,
+      )} -> ${formatMetadataPreviewValue(change.newValue)}`,
     );
   }
 
@@ -1249,8 +1326,12 @@ function confirmMetadataUpdate(
   return false;
 }
 
-function formatPreviewValue(value: unknown) {
+export function formatMetadataPreviewValue(value: unknown) {
   if (Array.isArray(value)) {
+    if (!value.length) {
+      return "(empty)";
+    }
+
     return value
       .map((entry) => {
         if (entry && typeof entry === "object") {
@@ -1326,7 +1407,7 @@ function applySafeCreators(
     }
     result.applied.push({
       field: "creators",
-      oldValue: undefined,
+      oldValue: oldCreators,
       newValue: newItem.creators,
     });
   } else if ("creators" in newItem) {

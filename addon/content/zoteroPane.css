@@ -1,3 +1,95 @@
-.makeItRed {
-  background-color: tomato;
+.metadata-preview-pane {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 4px 10px;
+  color: CanvasText;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.metadata-preview-pane * {
+  box-sizing: border-box;
+}
+
+.metadata-preview-provider,
+.metadata-preview-message,
+.metadata-preview-details {
+  color: color-mix(in srgb, CanvasText 72%, transparent);
+}
+
+.metadata-preview-message {
+  padding: 8px 2px;
+}
+
+.metadata-preview-message-loading {
+  color: color-mix(in srgb, AccentColor 75%, CanvasText);
+}
+
+.metadata-preview-details {
+  overflow-wrap: anywhere;
+}
+
+.metadata-preview-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+.metadata-preview-group h4 {
+  margin: 0;
+  color: color-mix(in srgb, CanvasText 82%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metadata-preview-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.34fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+}
+
+.metadata-preview-field,
+.metadata-preview-value,
+.metadata-preview-reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+
+.metadata-preview-field {
+  color: color-mix(in srgb, CanvasText 68%, transparent);
+  font-weight: 600;
+}
+
+.metadata-preview-value-old {
+  background: color-mix(in srgb, #d84f4f 14%, Canvas);
+  border-color: color-mix(in srgb, #d84f4f 32%, transparent);
+}
+
+.metadata-preview-value-new {
+  background: color-mix(in srgb, #2f8f55 16%, Canvas);
+  border-color: color-mix(in srgb, #2f8f55 34%, transparent);
+}
+
+.metadata-preview-reason {
+  grid-column: span 2;
+  color: color-mix(in srgb, CanvasText 72%, transparent);
+  background: color-mix(in srgb, CanvasText 6%, Canvas);
+}
+
+@media (max-width: 520px) {
+  .metadata-preview-row {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata-preview-reason {
+    grid-column: auto;
+  }
 }

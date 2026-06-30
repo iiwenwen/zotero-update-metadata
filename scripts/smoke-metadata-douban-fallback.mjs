@@ -12,6 +12,7 @@ const attachmentPreferencesOutfile = path.join(
   "attachmentPreferences.cjs",
 );
 const menuOutfile = path.join(tmp, "menu.cjs");
+const metadataPreviewPaneOutfile = path.join(tmp, "metadataPreviewPane.cjs");
 const require = createRequire(import.meta.url);
 
 try {
@@ -39,6 +40,14 @@ try {
     outfile: menuOutfile,
     logLevel: "silent",
   });
+  await build({
+    entryPoints: ["src/modules/metadataPreviewPane.ts"],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    outfile: metadataPreviewPaneOutfile,
+    logLevel: "silent",
+  });
 
   const {
     applyMetadataUpdateWithConfirmation,
@@ -50,6 +59,7 @@ try {
     extractDoubanTitle,
     formatBatchUpdateSummary,
     formatBatchUpdateSummaryLines,
+    formatMetadataPreviewValue,
     formatMetadataUpdatePreview,
     getConfiguredAttachmentSaveStrategy,
     getItemISBN,
@@ -59,6 +69,7 @@ try {
     mergeExtra,
     normalizeAttachmentSaveStrategy,
     normalizeMetadataOperationSchema,
+    previewMetadataUpdateForItem,
     shouldConfirmBeforeMetadataUpdate,
     shouldTryAttachmentSave,
     saveNewMetadataItem,
@@ -74,6 +85,10 @@ try {
     registerMenu,
     unregisterMenu,
   } = require(menuOutfile);
+  const {
+    registerMetadataPreviewPane,
+    unregisterMetadataPreviewPane,
+  } = require(metadataPreviewPaneOutfile);
 
   globalThis.ztoolkit = {
     createXULElement(doc, tag) {
@@ -236,6 +251,9 @@ try {
       isValidForType() {
         return true;
       },
+      getLocalizedString(field) {
+        return `localized:${field}`;
+      },
     },
     Libraries: {
       userLibraryID: 1,
@@ -344,6 +362,7 @@ try {
   assert.equal(previewItem.getField("publisher"), "Existing Publisher");
   assert.equal(previewItem.getField("ISBN"), "");
   assert.equal(previewItem.saveCount, 0);
+  assert.equal(formatMetadataPreviewValue([]), "(empty)");
   assert.match(previewText, /publisher: Existing Publisher -> Vintage/);
   assert.match(previewText, /creators: \(empty\) -> Haruki Murakami/);
   assert.match(previewText, /ISBN: \(empty\) -> 9780099448822/);
@@ -849,10 +868,357 @@ try {
     registerMenu,
     unregisterMenu,
   });
+  await assertMetadataPreviewForItemContract(previewMetadataUpdateForItem);
+  await assertMetadataPreviewPaneContract({
+    registerMetadataPreviewPane,
+    unregisterMetadataPreviewPane,
+  });
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+async function assertMetadataPreviewForItemContract(
+  previewMetadataUpdateForItem,
+) {
+  let translatedWebItems = [
+    {
+      itemType: "book",
+      title: "Norwegian Wood",
+      publisher: "Vintage",
+    },
+  ];
+
+  globalThis.Services = {
+    io: {
+      newURI(url) {
+        return { host: new URL(url).host };
+      },
+    },
+  };
+  globalThis.Components = {
+    utils: {
+      import() {
+        return {
+          ConcurrentCaller: class MockConcurrentCaller {
+            start(callback) {
+              return callback();
+            }
+          },
+        };
+      },
+    },
+  };
+  globalThis.Zotero.HTTP = {
+    async processDocuments(url, callback) {
+      return [callback(createMockDocument({ title: url, selectors: {} }))];
+    },
+  };
+  globalThis.Zotero.Translate = {
+    Web: class MockWebTranslate {
+      setDocument(doc) {
+        this.doc = doc;
+      }
+
+      async getTranslators() {
+        return [{ label: "Mock Douban" }];
+      }
+
+      setTranslator(translator) {
+        this.translator = translator;
+      }
+
+      async translate(settings) {
+        assert.equal(settings.saveAttachments, false);
+        assert.equal(settings.libraryID, false);
+        return translatedWebItems;
+      }
+    },
+  };
+
+  const missingURLResult = await previewMetadataUpdateForItem(
+    createMockItem({
+      itemTypeID: 1,
+      fields: { url: "" },
+      tags: [],
+    }),
+  );
+  assert.deepEqual(missingURLResult, {
+    status: "unavailable",
+    reason: "missing URL",
+  });
+
+  const unsupportedURLResult = await previewMetadataUpdateForItem(
+    createMockItem({
+      itemTypeID: 1,
+      fields: { url: "https://example.test/book" },
+      tags: [],
+    }),
+  );
+  assert.deepEqual(unsupportedURLResult, {
+    status: "unavailable",
+    reason: "unsupported URL",
+  });
+
+  const updatableItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      url: "https://book.douban.com/subject/1355643/",
+      title: "Norwegian Wood",
+      publisher: "Existing Publisher",
+    },
+    tags: [],
+  });
+  const previewResult = await previewMetadataUpdateForItem(updatableItem);
+
+  assert.equal(previewResult.status, "ready");
+  assert.equal(previewResult.provider, "douban-url");
+  assert.equal(
+    previewResult.update.applied.some(
+      (change) =>
+        change.field === "publisher" &&
+        change.oldValue === "Existing Publisher" &&
+        change.newValue === "Vintage",
+    ),
+    true,
+  );
+  assert.equal(updatableItem.getField("publisher"), "Existing Publisher");
+  assert.equal(updatableItem.saveCount, 0);
+
+  translatedWebItems = [
+    {
+      itemType: "book",
+      title: "Norwegian Wood",
+      publisher: "Existing Publisher",
+    },
+  ];
+  const noChangeResult = await previewMetadataUpdateForItem(updatableItem);
+  assert.equal(noChangeResult.status, "skipped");
+  assert.equal(noChangeResult.reason, "no safe metadata changes");
+  assert.equal(
+    noChangeResult.update.skipped.some((skip) => skip.field === "publisher"),
+    true,
+  );
+}
+
+function assertMetadataPreviewPaneContract(previewPaneApi) {
+  const registeredSheets = new Set();
+  const registeredSections = [];
+  const unregisteredSections = [];
+  const translatedWebItems = [
+    {
+      itemType: "book",
+      title: "Norwegian Wood",
+      publisher: "Vintage",
+    },
+  ];
+
+  globalThis.Services = {
+    io: {
+      newURI(uri) {
+        return uri.startsWith("http") ? { host: new URL(uri).host } : uri;
+      },
+    },
+  };
+  globalThis.Components = {
+    classes: {
+      "@mozilla.org/content/style-sheet-service;1": {
+        getService() {
+          return {
+            AUTHOR_SHEET: 2,
+            sheetRegistered(uri) {
+              return registeredSheets.has(uri);
+            },
+            loadAndRegisterSheet(uri) {
+              registeredSheets.add(uri);
+            },
+            unregisterSheet(uri) {
+              registeredSheets.delete(uri);
+            },
+          };
+        },
+      },
+    },
+    utils: {
+      import() {
+        return {
+          ConcurrentCaller: class MockConcurrentCaller {
+            start(callback) {
+              return callback();
+            }
+          },
+        };
+      },
+    },
+    interfaces: {
+      nsIStyleSheetService: "nsIStyleSheetService",
+    },
+  };
+  globalThis.Zotero.HTTP = {
+    async processDocuments(url, callback) {
+      return [callback(createMockDocument({ title: url, selectors: {} }))];
+    },
+  };
+  globalThis.Zotero.Translate = {
+    Web: class MockWebTranslate {
+      setDocument(doc) {
+        this.doc = doc;
+      }
+
+      async getTranslators() {
+        return [{ label: "Mock Douban" }];
+      }
+
+      setTranslator(translator) {
+        this.translator = translator;
+      }
+
+      async translate() {
+        return translatedWebItems;
+      }
+    },
+  };
+  globalThis.Zotero.ItemPaneManager = {
+    registerSection(options) {
+      registeredSections.push(options);
+      return "metadata-preview-section";
+    },
+    unregisterSection(key) {
+      unregisteredSections.push(key);
+      return true;
+    },
+  };
+  globalThis.addon = {
+    data: {
+      locale: {
+        current: {
+          formatMessagesSync(messages) {
+            return messages.map((message) => ({
+              value: message.id.replace(/^updatemetadata-/, ""),
+            }));
+          },
+        },
+      },
+    },
+  };
+
+  previewPaneApi.registerMetadataPreviewPane();
+  assert.equal(registeredSections.length, 1);
+  assert.equal(registeredSections[0].paneID, "updatemetadata-metadata-preview");
+  assert.equal(
+    registeredSections[0].pluginID,
+    "zotero-update-metadata@iiwenwen",
+  );
+  assert.equal(
+    registeredSections[0].header.l10nID,
+    "updatemetadata-metadata-preview-pane-label",
+  );
+  assert.equal(typeof registeredSections[0].onAsyncRender, "function");
+  assert.equal(
+    registeredSheets.has("chrome://updatemetadata/content/zoteroPane.css"),
+    true,
+  );
+
+  const body = createPreviewBody();
+  let enabled = null;
+  let summary = "";
+  return Promise.resolve(
+    registeredSections[0].onAsyncRender({
+      body,
+      item: createMockItem({
+        itemTypeID: 1,
+        fields: {
+          url: "https://book.douban.com/subject/1355643/",
+          title: "Norwegian Wood",
+          publisher: "Existing Publisher",
+        },
+        tags: [],
+      }),
+      tabType: "library",
+      editable: true,
+      setEnabled(value) {
+        enabled = value;
+        return false;
+      },
+      setSectionSummary(value) {
+        summary = value;
+        return value;
+      },
+      setL10nArgs() {},
+      setSectionButtonStatus() {},
+    }),
+  ).then(() => {
+    const renderedText = collectPreviewText(body);
+    assert.equal(enabled, true);
+    assert.equal(summary, "metadata-preview-pane-summary-ready");
+    assert.match(renderedText, /metadata-preview-pane-updatable/);
+    assert.match(renderedText, /localized:publisher/);
+    assert.match(renderedText, /Existing Publisher/);
+    assert.match(renderedText, /Vintage/);
+
+    previewPaneApi.unregisterMetadataPreviewPane();
+    assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
+    assert.equal(registeredSheets.size, 0);
+  });
+}
+
+function createPreviewBody() {
+  const doc = {
+    createElement(tagName) {
+      return createPreviewElement(this, tagName);
+    },
+  };
+  return createPreviewElement(doc, "div");
+}
+
+function createPreviewElement(ownerDocument, tagName) {
+  return {
+    ownerDocument,
+    tagName,
+    className: "",
+    dataset: {},
+    children: [],
+    textContent: "",
+    append(...children) {
+      this.children.push(...children);
+    },
+    replaceChildren(...children) {
+      this.children = [...children];
+    },
+    querySelector(selector) {
+      if (!selector.startsWith(".")) {
+        return null;
+      }
+      const className = selector.slice(1);
+      return findPreviewElementByClass(this, className);
+    },
+  };
+}
+
+function findPreviewElementByClass(element, className) {
+  if (
+    String(element.className || "")
+      .split(/\s+/)
+      .includes(className)
+  ) {
+    return element;
+  }
+
+  for (const child of element.children) {
+    const match = findPreviewElementByClass(child, className);
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function collectPreviewText(element) {
+  return [element.textContent, ...element.children.map(collectPreviewText)]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function assertMenuActionContract(parent, actions, menuApi) {
@@ -1297,6 +1663,9 @@ function createMockItem({ itemTypeID, fields, tags, attachments = [] }) {
     },
     getNotes() {
       return [];
+    },
+    isRegularItem() {
+      return true;
     },
     async saveTx() {
       this.saveCount += 1;

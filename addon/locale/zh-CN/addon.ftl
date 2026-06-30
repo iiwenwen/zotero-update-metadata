@@ -22,6 +22,26 @@ message-updateItem-skip = 已跳过更新条目
 message-getMeta-error = 获取元数据失败
 
 metadata-preview-title = 确认更新元数据
+metadata-preview-pane-label = 元数据预览
+metadata-preview-pane-loading = 正在生成预览...
+metadata-preview-pane-provider = 来源
+metadata-preview-pane-updatable = 可更新
+metadata-preview-pane-skipped = 无需更新/已跳过
+metadata-preview-pane-empty = 没有可安全更新的字段
+metadata-preview-pane-error = 生成预览失败
+metadata-preview-pane-unavailable = 无法预览此条目
+metadata-preview-pane-missing-url = 此条目没有 URL
+metadata-preview-pane-unsupported-url = 暂不支持此条目的 URL
+metadata-preview-pane-summary-ready =
+    { $count ->
+       *[other] { $count } 项可更新
+    }
+metadata-preview-pane-summary-empty = 无可更新
+metadata-preview-pane-summary-error = 预览失败
+metadata-preview-pane-summary-unavailable = 不可用
+metadata-preview-field-creators = 作者
+metadata-preview-field-tags = 标签
+metadata-preview-field-itemType = 条目类型
 batch-summary-title = 汇总
 batch-summary-success = 成功
 batch-summary-failed = 失败
