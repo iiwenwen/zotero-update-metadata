@@ -112,6 +112,12 @@ After a CNB pull is open, CNB review feedback, comments, status checks, and conf
 
 ## 8. Git And Persistence
 
+Tool boundary:
+
+- Use `git` for local repository truth: worktrees, branches, diffs, staging, commits, fetch, pull, push, and the commit graph.
+- Use CNB CLI for CNB platform truth: Issues, pulls, comments, reviews, status checks, conflicts, mergeability, merge gate, and Issue closure.
+- When `git` and CNB CLI disagree, re-read both surfaces. Trust `git` for repository state and CNB CLI for platform gate state; do not infer one from the other.
+
 Default branch workflow:
 
 - Do not do `repo-change` or `versioned-governance-change` work directly on `main`.
