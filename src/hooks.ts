@@ -5,6 +5,10 @@ import {
   registerPrefsWindow,
   registerPrefsScripts,
 } from "./modules/preferenceWindow";
+import {
+  registerMetadataPreviewPane,
+  unregisterMetadataPreviewPane,
+} from "./modules/metadataPreviewPane";
 
 async function onStartup() {
   await Promise.all([
@@ -22,6 +26,7 @@ async function onStartup() {
   initLocale();
 
   registerPrefsWindow();
+  registerMetadataPreviewPane();
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -74,6 +79,7 @@ async function onMainWindowUnload(win: _ZoteroTypes.MainWindow): Promise<void> {
 }
 
 function onShutdown(): void {
+  unregisterMetadataPreviewPane();
   unregisterMenu(addon.data.mainWindow);
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();

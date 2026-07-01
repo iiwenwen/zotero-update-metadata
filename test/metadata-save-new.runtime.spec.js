@@ -37,6 +37,31 @@ describe("metadata save-new runtime", function () {
     }
   });
 
+  it("registers the metadata preview pane with Zotero item pane manager", function () {
+    const customSections = Zotero.ItemPaneManager.customSectionData.options;
+    const section = customSections.find(
+      (option) =>
+        option.pluginID === "zotero-update-metadata@iiwenwen" &&
+        option.paneID.includes("updatemetadata-metadata-preview"),
+    );
+
+    assert.isOk(section, "metadata preview section should be registered");
+    assert.equal(typeof section.onRender, "function");
+    assert.equal(typeof section.onAsyncRender, "function");
+    assert.include(
+      section.bodyXHTML,
+      "metadata-preview-pane",
+      "registered section should provide preview pane body markup",
+    );
+
+    window.debug({
+      marker: "metadata-runtime-preview-pane-registered",
+      paneID: section.paneID,
+      hasOnRender: typeof section.onRender === "function",
+      hasOnAsyncRender: typeof section.onAsyncRender === "function",
+    });
+  });
+
   it("does not write an existing item when update confirmation is canceled", async function () {
     let confirmCalls = 0;
     const libraryID = Zotero.Libraries.userLibraryID;
