@@ -5,6 +5,10 @@ import {
   isSupportedMetadataURL,
   type MetadataOperationSchema,
 } from "./metadata";
+import {
+  showMetadataPreviewPaneForItems,
+  showMetadataPreviewPaneResult,
+} from "./metadataPreviewPane";
 
 const MENU_ID = "updateMetadata";
 const MENU_ACTION_BASE_ID = `${MENU_ID}-action`;
@@ -180,11 +184,18 @@ function runMetadataAction(
   schema: MetadataOperationSchema,
   items?: Zotero.Item[],
 ) {
+  const selectedItems = items ?? getSelectedItems(win);
+  if (schema === "update") {
+    showMetadataPreviewPaneForItems(selectedItems);
+  }
+
   return getMeta({
     win,
-    items: items ?? getSelectedItems(win),
+    items: selectedItems,
     schema,
     collectionID: getSelectedCollectionID(win),
+    onUpdatePreview:
+      schema === "update" ? showMetadataPreviewPaneResult : undefined,
   });
 }
 
