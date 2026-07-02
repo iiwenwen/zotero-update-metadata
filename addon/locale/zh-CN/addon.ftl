@@ -23,6 +23,7 @@ message-getMeta-error = 获取元数据失败
 
 metadata-preview-title = 确认更新元数据
 metadata-preview-pane-label = 元数据预览
+metadata-preview-pane-idle = 执行“更新现有条目”后可预览安全变更。
 metadata-preview-pane-loading = 正在生成预览...
 metadata-preview-pane-provider = 来源
 metadata-preview-pane-updatable = 可更新
@@ -38,7 +39,9 @@ metadata-preview-pane-summary-ready =
     }
 metadata-preview-pane-summary-empty = 无可更新
 metadata-preview-pane-summary-error = 预览失败
+metadata-preview-pane-summary-idle = 等待预览
 metadata-preview-pane-summary-unavailable = 不可用
+metadata-preview-status-idle = 可预览
 metadata-preview-status-loading = 生成中
 metadata-preview-status-ready = 可更新
 metadata-preview-status-skipped = 无变更

@@ -1128,6 +1128,7 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   );
   assert.equal(typeof registeredSections[0].onInit, "function");
   assert.equal(typeof registeredSections[0].onRender, "function");
+  assert.equal(typeof registeredSections[0].onItemChange, "function");
   assert.equal(typeof registeredSections[0].onAsyncRender, "function");
   assert.equal(
     registeredSheets.has("chrome://updatemetadata/content/zoteroPane.css"),
@@ -1170,20 +1171,59 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
       return Promise.resolve();
     },
   });
-  assert.equal(enabled, false);
-  assert.equal(summary, "");
-  assert.equal(collectPreviewText(body), "");
+  let renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-status-idle/);
+  assert.match(renderedText, /metadata-preview-pane-idle/);
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane init state should not translate independently",
+  );
+
+  enabled = null;
+  summary = "stale";
+  registeredSections[0].onRender(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-status-idle/);
+  assert.match(renderedText, /metadata-preview-pane-idle/);
+  assert.ok(
+    body.querySelector(".metadata-preview-overview-idle"),
+    "metadata preview pane should stay visible in its idle state",
+  );
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane idle state should not translate independently",
+  );
+
+  enabled = null;
+  summary = "stale";
+  registeredSections[0].onItemChange(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-pane-idle/);
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane item-change state should not translate independently",
+  );
 
   enabled = null;
   summary = "stale";
   await registeredSections[0].onAsyncRender(props);
-  assert.equal(enabled, false);
-  assert.equal(summary, "");
-  assert.equal(collectPreviewText(body), "");
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-pane-idle/);
   assert.equal(
     translateCount,
     0,
-    "metadata preview pane should not translate before a user action reveals it",
+    "metadata preview pane should not translate before a user action requests preview data",
   );
 
   previewPaneApi.showMetadataPreviewPaneForItems([previewItem]);
@@ -1192,7 +1232,7 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   enabled = null;
   summary = "";
   await registeredSections[0].onAsyncRender(props);
-  let renderedText = collectPreviewText(body);
+  renderedText = collectPreviewText(body);
   assert.equal(enabled, true);
   assert.equal(summary, "metadata-preview-pane-loading");
   assert.match(renderedText, /metadata-preview-status-loading/);
@@ -1472,7 +1512,7 @@ function assertMenuActionContract(parent, actions, menuApi) {
   assert.match(
     menuSource,
     /schema\s*===\s*"update"/,
-    "metadata preview pane should only be revealed for update actions",
+    "metadata preview pane should only receive preview data from update actions",
   );
   assert.match(
     menuSource,

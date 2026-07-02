@@ -2,6 +2,7 @@ import { config } from "../../package.json";
 import { getString } from "../utils/locale";
 import {
   formatMetadataPreviewValue,
+  isSupportedMetadataURL,
   type MetadataChange,
   type MetadataSkip,
   type MetadataUpdatePreviewForItemResult,
@@ -23,7 +24,7 @@ type SectionInitHookArgs =
 type MetadataPreviewPaneState =
   MetadataUpdatePreviewForItemResult | { status: "pending" };
 type MetadataPreviewOverviewTone =
-  "loading" | "ready" | "skipped" | "error" | "unavailable";
+  "idle" | "loading" | "ready" | "skipped" | "error" | "unavailable";
 
 export function registerMetadataPreviewPane() {
   registerMetadataPreviewStyles();
@@ -46,6 +47,7 @@ export function registerMetadataPreviewPane() {
     bodyXHTML: `<div class="metadata-preview-pane"></div>`,
     onInit: initializeMetadataPreviewPane,
     onRender: renderInitialState,
+    onItemChange: renderMetadataPreview,
     onAsyncRender: renderMetadataPreview,
     onDestroy: destroyMetadataPreviewPane,
   });
@@ -144,7 +146,7 @@ function getStyleSheetService() {
 
 function initializeMetadataPreviewPane(props: SectionInitHookArgs) {
   refreshMetadataPreviewPane = () => props.refresh();
-  renderInitialState(props);
+  renderIdlePreviewPane(props, getPreviewRoot(props.body));
 }
 
 function destroyMetadataPreviewPane() {
@@ -153,7 +155,7 @@ function destroyMetadataPreviewPane() {
 
 function renderInitialState(props: SectionHookArgs) {
   const root = getPreviewRoot(props.body);
-  disablePreviewPane(props, root);
+  renderIdlePreviewPane(props, root);
 }
 
 function renderMetadataPreview(props: SectionHookArgs) {
@@ -161,8 +163,13 @@ function renderMetadataPreview(props: SectionHookArgs) {
   const regularItem = props.item?.isRegularItem?.() === true;
   const previewState = getPreviewStateForItem(props.item);
 
-  if (!regularItem || !previewState) {
+  if (!regularItem) {
     disablePreviewPane(props, root);
+    return;
+  }
+
+  if (!previewState) {
+    renderIdlePreviewPane(props, root);
     return;
   }
 
@@ -193,6 +200,70 @@ function disablePreviewPane(props: SectionHookArgs, root: HTMLElement) {
   props.setEnabled(false);
   props.setSectionSummary("");
   root.replaceChildren();
+}
+
+function renderIdlePreviewPane(props: SectionHookArgs, root: HTMLElement) {
+  const regularItem = props.item?.isRegularItem?.() === true;
+  if (!regularItem) {
+    disablePreviewPane(props, root);
+    return;
+  }
+
+  const idleState = getIdlePreviewState(props.item);
+  root.dataset.renderToken = String(
+    Number(root.dataset.renderToken || "0") + 1,
+  );
+  root.dataset.previewStatus = "idle";
+  props.setEnabled(true);
+  props.setSectionSummary(idleState.summary);
+  root.replaceChildren();
+  appendOverview(root, {
+    summary: idleState.message,
+    statusLabel: idleState.statusLabel,
+    tone: idleState.tone,
+  });
+}
+
+function getIdlePreviewState(item: Zotero.Item | undefined): {
+  message: string;
+  summary: string;
+  statusLabel: string;
+  tone: MetadataPreviewOverviewTone;
+} {
+  const url = getItemURL(item);
+  if (!url) {
+    return {
+      message: getString("metadata-preview-pane-missing-url"),
+      summary: getString("metadata-preview-pane-summary-unavailable"),
+      statusLabel: getString("metadata-preview-status-unavailable"),
+      tone: "unavailable",
+    };
+  }
+
+  if (!isSupportedMetadataURL(url)) {
+    return {
+      message: getString("metadata-preview-pane-unsupported-url"),
+      summary: getString("metadata-preview-pane-summary-unavailable"),
+      statusLabel: getString("metadata-preview-status-unavailable"),
+      tone: "unavailable",
+    };
+  }
+
+  return {
+    message: getString("metadata-preview-pane-idle"),
+    summary: getString("metadata-preview-pane-summary-idle"),
+    statusLabel: getString("metadata-preview-status-idle"),
+    tone: "idle",
+  };
+}
+
+function getItemURL(item: Zotero.Item | undefined) {
+  try {
+    const url = item?.getField?.("url");
+    return typeof url === "string" ? url : String(url || "");
+  } catch {
+    return "";
+  }
 }
 
 function getPreviewStateForItem(item: Zotero.Item | undefined) {
