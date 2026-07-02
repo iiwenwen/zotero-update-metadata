@@ -1,0 +1,4 @@
+interface:
+  display_name: "开发循环飞轮"
+  short_description: "读取并沉淀开发循环记忆。"
+  default_prompt: "使用 $dev-loop-flywheel 在开工前读取匹配记忆，并在本轮结束后沉淀可复用学习。"

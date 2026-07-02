@@ -32,6 +32,8 @@ dist/
 .codex/skills/*
 !.codex/skills/zotero-review/
 !.codex/skills/zotero-review/**
+!.codex/skills/dev-loop-flywheel/
+!.codex/skills/dev-loop-flywheel/**
 !.codex/skills/zotero-verification-ladder/
 .codex/skills/zotero-verification-ladder/*
 !.codex/skills/zotero-verification-ladder/SKILL.md
