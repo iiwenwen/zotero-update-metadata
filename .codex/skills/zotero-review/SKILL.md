@@ -61,7 +61,9 @@ reviewer 只读。它们不能改文件、stage、commit、push、merge、关闭
 
 如果使用多个视角 reviewer，它们只产出 findings。独立 lead reviewer 是唯一允许输出最终 `REVIEW_ROUND_<n>` 信号的 reviewer。实现 agent 不能把 findings 聚合成 pass/fail 决策。
 
-如果任一视角 reviewer 报告 `FAIL`、`NEED_HUMAN_DECISION` 或仍有未关闭的 P0/P1/P2 finding，lead reviewer 必须判定本轮 FAIL。finding 的重新分级或关闭必须有 packet 证据或新 review round 证据。
+如果任一视角 reviewer 报告 `NEED_HUMAN_DECISION`，lead reviewer 必须把本轮结果升级为 `REVIEW_ROUND_<n>: NEED_HUMAN_DECISION: <reason>`，不能把需要人类决策的情况降级成可修复 `FAIL`。
+
+如果任一视角 reviewer 报告 `FAIL` 或仍有未关闭的可修复 P0/P1/P2 finding，lead reviewer 必须判定本轮 `FAIL`。finding 的重新分级或关闭必须有 packet 证据或新 review round 证据。
 
 ## 评审契约
 
