@@ -2,12 +2,14 @@
   --metadata-preview-accent: color-mix(in srgb, AccentColor 76%, CanvasText);
   --metadata-preview-border: color-mix(in srgb, CanvasText 13%, Canvas);
   --metadata-preview-muted: color-mix(in srgb, CanvasText 64%, Canvas);
+  --metadata-preview-loading: #0369a1;
   --metadata-preview-soft: color-mix(in srgb, AccentColor 8%, Canvas);
   --metadata-preview-surface: color-mix(in srgb, Canvas 94%, CanvasText);
   --metadata-preview-success: #2e7d54;
   --metadata-preview-warning: #946200;
   --metadata-preview-danger: #b34040;
   box-sizing: border-box;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -35,6 +37,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden;
   padding: 10px;
   border-color: color-mix(
     in srgb,
@@ -50,10 +53,142 @@
     var(--metadata-preview-surface);
 }
 
+.metadata-preview-overview-loading {
+  border-color: color-mix(
+    in srgb,
+    var(--metadata-preview-loading) 30%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--metadata-preview-loading) 8%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
+.metadata-preview-overview-ready {
+  border-color: color-mix(
+    in srgb,
+    var(--metadata-preview-success) 30%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--metadata-preview-success) 7%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
+.metadata-preview-overview-skipped {
+  border-color: color-mix(
+    in srgb,
+    CanvasText 18%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, CanvasText 4%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
+.metadata-preview-overview-error {
+  border-color: color-mix(
+    in srgb,
+    var(--metadata-preview-danger) 32%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--metadata-preview-danger) 8%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
+.metadata-preview-overview-unavailable {
+  border-color: color-mix(
+    in srgb,
+    var(--metadata-preview-warning) 30%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--metadata-preview-warning) 8%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
+.metadata-preview-status {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.metadata-preview-status-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.metadata-preview-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metadata-preview-status-loading {
+  color: color-mix(in srgb, var(--metadata-preview-loading) 82%, CanvasText);
+  background: color-mix(in srgb, var(--metadata-preview-loading) 8%, Canvas);
+}
+
+.metadata-preview-status-ready {
+  color: color-mix(in srgb, var(--metadata-preview-success) 82%, CanvasText);
+  background: color-mix(in srgb, var(--metadata-preview-success) 8%, Canvas);
+}
+
+.metadata-preview-status-skipped {
+  color: var(--metadata-preview-muted);
+  background: color-mix(in srgb, CanvasText 5%, Canvas);
+}
+
+.metadata-preview-status-error {
+  color: color-mix(in srgb, var(--metadata-preview-danger) 82%, CanvasText);
+  background: color-mix(in srgb, var(--metadata-preview-danger) 8%, Canvas);
+}
+
+.metadata-preview-status-unavailable {
+  color: color-mix(in srgb, var(--metadata-preview-warning) 84%, CanvasText);
+  background: color-mix(in srgb, var(--metadata-preview-warning) 8%, Canvas);
+}
+
 .metadata-preview-summary {
-  color: color-mix(in srgb, CanvasText 88%, transparent);
+  color: CanvasText;
   font-size: 12px;
   font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .metadata-preview-meta {
@@ -71,6 +206,7 @@
   max-width: 100%;
   border-radius: 999px;
   font-size: 11px;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -86,6 +222,8 @@
 
 .metadata-preview-metric {
   gap: 5px;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
   background: color-mix(in srgb, CanvasText 4%, Canvas);
   color: var(--metadata-preview-muted);
@@ -102,6 +240,12 @@
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+}
+
+.metadata-preview-metric-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metadata-preview-metric-change .metadata-preview-metric-value,
@@ -139,7 +283,7 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: color-mix(in srgb, CanvasText 82%, transparent);
+  color: CanvasText;
   font-size: 11px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -188,7 +332,7 @@
 
 .metadata-preview-value-label {
   color: var(--metadata-preview-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -206,14 +350,14 @@
 }
 
 .metadata-preview-value-old {
-  color: color-mix(in srgb, CanvasText 72%, transparent);
+  color: color-mix(in srgb, CanvasText 78%, Canvas);
   background: color-mix(in srgb, var(--metadata-preview-danger) 7%, Canvas);
   border-inline-start: 3px solid
     color-mix(in srgb, var(--metadata-preview-danger) 48%, Canvas);
 }
 
 .metadata-preview-value-new {
-  color: color-mix(in srgb, CanvasText 92%, transparent);
+  color: CanvasText;
   background: color-mix(in srgb, var(--metadata-preview-success) 10%, Canvas);
   border-inline-start: 3px solid
     color-mix(in srgb, var(--metadata-preview-success) 54%, Canvas);
@@ -260,6 +404,48 @@
 @media (prefers-reduced-motion: reduce) {
   .metadata-preview-pane * {
     transition: none;
+  }
+}
+
+@container (max-width: 340px) {
+  .metadata-preview-row {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata-preview-row-change .metadata-preview-field,
+  .metadata-preview-row-change .metadata-preview-value,
+  .metadata-preview-reason {
+    grid-row: auto;
+    grid-column: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .metadata-preview-overview,
+  .metadata-preview-group,
+  .metadata-preview-message,
+  .metadata-preview-details,
+  .metadata-preview-provider,
+  .metadata-preview-metric,
+  .metadata-preview-status {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .metadata-preview-status-dot,
+  .metadata-preview-metric-value,
+  .metadata-preview-group-count {
+    background: CanvasText;
+    color: Canvas;
+  }
+
+  .metadata-preview-value-old,
+  .metadata-preview-value-new,
+  .metadata-preview-reason {
+    border-inline-start-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
   }
 }
 

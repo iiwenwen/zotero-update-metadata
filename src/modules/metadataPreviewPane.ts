@@ -22,6 +22,8 @@ type SectionInitHookArgs =
   _ZoteroTypes.ItemPaneManagerSection.SectionInitHookArgs;
 type MetadataPreviewPaneState =
   MetadataUpdatePreviewForItemResult | { status: "pending" };
+type MetadataPreviewOverviewTone =
+  "loading" | "ready" | "skipped" | "error" | "unavailable";
 
 export function registerMetadataPreviewPane() {
   registerMetadataPreviewStyles();
@@ -171,8 +173,10 @@ function renderMetadataPreview(props: SectionHookArgs) {
     );
     root.dataset.previewStatus = "pending";
     props.setSectionSummary(getString("metadata-preview-pane-loading"));
-    renderMessage(root, getString("metadata-preview-pane-loading"), {
-      loading: true,
+    root.replaceChildren();
+    appendOverview(root, {
+      summary: getString("metadata-preview-pane-loading"),
+      statusLabel: getString("metadata-preview-status-loading"),
       tone: "loading",
     });
     return;
@@ -236,6 +240,8 @@ function renderPreviewResult(
   if (result.status === "ready") {
     appendOverview(root, {
       summary: getPreviewSummary(result),
+      statusLabel: getString("metadata-preview-status-ready"),
+      tone: "ready",
       provider: result.provider,
       changeCount: result.update.applied.length,
       skipCount: result.update.skipped.length,
@@ -248,24 +254,36 @@ function renderPreviewResult(
   if (result.status === "skipped") {
     appendOverview(root, {
       summary: getString("metadata-preview-pane-empty"),
+      statusLabel: getString("metadata-preview-status-skipped"),
+      tone: "skipped",
       skipCount: result.update.skipped.length,
     });
     appendSkips(root, result.update.skipped);
     if (!result.update.skipped.length) {
-      renderMessage(root, getString("metadata-preview-pane-empty"));
+      appendMessage(root, getString("metadata-preview-pane-empty"));
     }
     return;
   }
 
   if (result.status === "error") {
-    renderMessage(root, getString("metadata-preview-pane-error"), {
+    appendOverview(root, {
+      summary: getPreviewSummary(result),
+      statusLabel: getString("metadata-preview-status-error"),
+      tone: "error",
+    });
+    appendMessage(root, getString("metadata-preview-pane-error"), {
       tone: "error",
     });
     appendDetails(root, result.error);
     return;
   }
 
-  renderMessage(root, getUnavailableMessage(result.reason), {
+  appendOverview(root, {
+    summary: getPreviewSummary(result),
+    statusLabel: getString("metadata-preview-status-unavailable"),
+    tone: "unavailable",
+  });
+  appendMessage(root, getUnavailableMessage(result.reason), {
     tone: "warning",
   });
 }
@@ -274,6 +292,8 @@ function appendOverview(
   root: HTMLElement,
   options: {
     summary: string;
+    statusLabel?: string;
+    tone?: MetadataPreviewOverviewTone;
     provider?: string;
     changeCount?: number;
     skipCount?: number;
@@ -281,7 +301,19 @@ function appendOverview(
 ) {
   const doc = root.ownerDocument!;
   const overview = doc.createElement("div");
-  overview.className = "metadata-preview-overview";
+  overview.className = [
+    "metadata-preview-overview",
+    options.tone ? `metadata-preview-overview-${options.tone}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  overview.setAttribute("role", "status");
+  overview.setAttribute("aria-live", "polite");
+  overview.setAttribute("aria-atomic", "true");
+
+  if (options.statusLabel) {
+    overview.append(createStatusChip(root, options.statusLabel, options.tone));
+  }
 
   const summary = doc.createElement("div");
   summary.className = "metadata-preview-summary";
@@ -323,10 +355,32 @@ function appendOverview(
 function createProviderChip(root: HTMLElement, provider: string) {
   const providerElement = root.ownerDocument!.createElement("div");
   providerElement.className = "metadata-preview-provider";
-  providerElement.textContent = `${getString(
-    "metadata-preview-pane-provider",
-  )}: ${provider}`;
+  const label = getString("metadata-preview-pane-provider");
+  providerElement.textContent = `${label}: ${provider}`;
+  providerElement.setAttribute("title", provider);
+  providerElement.setAttribute("aria-label", `${label}: ${provider}`);
   return providerElement;
+}
+
+function createStatusChip(
+  root: HTMLElement,
+  label: string,
+  tone: MetadataPreviewOverviewTone = "ready",
+) {
+  const status = root.ownerDocument!.createElement("div");
+  status.className = `metadata-preview-status metadata-preview-status-${tone}`;
+  status.setAttribute("aria-label", label);
+
+  const dot = root.ownerDocument!.createElement("span");
+  dot.className = "metadata-preview-status-dot";
+  dot.setAttribute("aria-hidden", "true");
+
+  const text = root.ownerDocument!.createElement("span");
+  text.className = "metadata-preview-status-label";
+  text.textContent = label;
+
+  status.append(dot, text);
+  return status;
 }
 
 function createMetric(
@@ -337,6 +391,7 @@ function createMetric(
 ) {
   const metric = root.ownerDocument!.createElement("div");
   metric.className = `metadata-preview-metric ${className}`;
+  metric.setAttribute("aria-label", `${label}: ${count}`);
 
   const value = root.ownerDocument!.createElement("span");
   value.className = "metadata-preview-metric-value";
@@ -467,12 +522,11 @@ function createSkipRow(root: HTMLElement, skip: MetadataSkip) {
   return row;
 }
 
-function renderMessage(
+function appendMessage(
   root: HTMLElement,
   message: string,
   options: { loading?: boolean; tone?: "loading" | "error" | "warning" } = {},
 ) {
-  root.replaceChildren();
   const messageElement = root.ownerDocument!.createElement("div");
   messageElement.className = [
     "metadata-preview-message",
