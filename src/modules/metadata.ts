@@ -113,6 +113,10 @@ export type MetadataRunContext = {
   items?: Zotero.Item[];
   collectionID?: number;
   schema?: MetadataOperationSchema;
+  onUpdatePreview?: (
+    item: Zotero.Item,
+    result: MetadataUpdatePreviewForItemResult,
+  ) => void;
 };
 
 type MainWindowWithPane = _ZoteroTypes.MainWindow & {
@@ -227,6 +231,10 @@ export async function getMeta(context: MetadataRunContext = {}) {
     try {
       const url = item.getField("url");
       if (!cleanText(url)) {
+        notifyMetadataPreview(context, schema, item, {
+          status: "unavailable",
+          reason: "missing URL",
+        });
         recordSkipped(summary, "missing URL");
         popWin.changeLine({
           type: "default",
@@ -238,6 +246,10 @@ export async function getMeta(context: MetadataRunContext = {}) {
       }
 
       if (!isSupportedMetadataURL(url)) {
+        notifyMetadataPreview(context, schema, item, {
+          status: "unavailable",
+          reason: "unsupported URL",
+        });
         recordSkipped(summary, "unsupported URL");
         popWin.changeLine({
           type: "default",
@@ -287,6 +299,16 @@ export async function getMeta(context: MetadataRunContext = {}) {
 
       const startTime = Date.now();
       const updateResult = await updateItem(translatedItem, item, context.win);
+      notifyMetadataPreview(
+        context,
+        schema,
+        item,
+        createMetadataPreviewResultFromUpdate(
+          updateResult,
+          translatedResult.provider,
+          translatedResult.attempts,
+        ),
+      );
       const endTime = Date.now();
       ztoolkit.log(`updateItem took ${endTime - startTime} milliseconds`);
       if (updateResult.status === "applied") {
@@ -306,6 +328,10 @@ export async function getMeta(context: MetadataRunContext = {}) {
         idx: 1,
       });
     } catch (err) {
+      notifyMetadataPreview(context, schema, item, {
+        status: "error",
+        error: getErrorMessage(err),
+      });
       ztoolkit.log(err);
       logMetadataEvent("item-error", {
         itemID: item.id,
@@ -1099,6 +1125,44 @@ export type MetadataUpdatePreviewForItemResult =
     };
 
 const NO_SAFE_CHANGES_REASON = "no safe metadata changes";
+
+function notifyMetadataPreview(
+  context: MetadataRunContext,
+  schema: MetadataOperationSchema,
+  item: Zotero.Item,
+  result: MetadataUpdatePreviewForItemResult,
+) {
+  if (schema !== "update") {
+    return;
+  }
+
+  try {
+    context.onUpdatePreview?.(item, result);
+  } catch (err) {
+    ztoolkit.log("Unable to update metadata preview pane", err);
+  }
+}
+
+function createMetadataPreviewResultFromUpdate(
+  result: MetadataUpdateResult,
+  provider: string,
+  attempts: MetadataProviderAttempt[],
+): MetadataUpdatePreviewForItemResult {
+  if (result.update.applied.length) {
+    return {
+      status: "ready",
+      provider,
+      attempts,
+      update: result.update,
+    };
+  }
+
+  return {
+    status: "skipped",
+    reason: result.reason || NO_SAFE_CHANGES_REASON,
+    update: result.update,
+  };
+}
 
 export function shouldConfirmBeforeMetadataUpdate() {
   const value = getPref("confirmBeforeUpdate");

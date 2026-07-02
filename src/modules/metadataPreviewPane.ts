@@ -2,7 +2,6 @@ import { config } from "../../package.json";
 import { getString } from "../utils/locale";
 import {
   formatMetadataPreviewValue,
-  previewMetadataUpdateForItem,
   type MetadataChange,
   type MetadataSkip,
   type MetadataUpdatePreviewForItemResult,
@@ -14,8 +13,15 @@ const ICON_URI = `chrome://${config.addonRef}/content/icons/favicon.png`;
 
 let registeredSectionKey: string | null = null;
 let registeredStyleURI: nsIURI | null = null;
+let refreshMetadataPreviewPane: (() => Promise<void>) | null = null;
+let visibleItemKeys = new Set<string>();
+let previewResultsByItemKey = new Map<string, MetadataPreviewPaneState>();
 
 type SectionHookArgs = _ZoteroTypes.ItemPaneManagerSection.SectionHookArgs;
+type SectionInitHookArgs =
+  _ZoteroTypes.ItemPaneManagerSection.SectionInitHookArgs;
+type MetadataPreviewPaneState =
+  MetadataUpdatePreviewForItemResult | { status: "pending" };
 
 export function registerMetadataPreviewPane() {
   registerMetadataPreviewStyles();
@@ -36,8 +42,10 @@ export function registerMetadataPreviewPane() {
       l10nID: `${config.addonRef}-metadata-preview-pane-label`,
     },
     bodyXHTML: `<div class="metadata-preview-pane"></div>`,
+    onInit: initializeMetadataPreviewPane,
     onRender: renderInitialState,
     onAsyncRender: renderMetadataPreview,
+    onDestroy: destroyMetadataPreviewPane,
   });
 
   if (!registered) {
@@ -56,7 +64,40 @@ export function unregisterMetadataPreviewPane() {
     registeredSectionKey = null;
   }
 
+  refreshMetadataPreviewPane = null;
+  visibleItemKeys = new Set<string>();
+  previewResultsByItemKey = new Map<string, MetadataPreviewPaneState>();
   unregisterMetadataPreviewStyles();
+}
+
+export function showMetadataPreviewPaneForItems(items: Zotero.Item[]) {
+  visibleItemKeys = new Set(
+    items.map(getItemKey).filter((key): key is string => Boolean(key)),
+  );
+
+  if (!visibleItemKeys.size) {
+    return;
+  }
+
+  for (const itemKey of visibleItemKeys) {
+    previewResultsByItemKey.set(itemKey, { status: "pending" });
+  }
+
+  refreshPreviewPane();
+}
+
+export function showMetadataPreviewPaneResult(
+  item: Zotero.Item,
+  result: MetadataUpdatePreviewForItemResult,
+) {
+  const itemKey = getItemKey(item);
+  if (!itemKey) {
+    return;
+  }
+
+  visibleItemKeys.add(itemKey);
+  previewResultsByItemKey.set(itemKey, result);
+  refreshPreviewPane();
 }
 
 function registerMetadataPreviewStyles() {
@@ -99,35 +140,76 @@ function getStyleSheetService() {
   ].getService(Components.interfaces.nsIStyleSheetService);
 }
 
-function renderInitialState(props: SectionHookArgs) {
-  const root = getPreviewRoot(props.body);
-  renderMessage(root, getString("metadata-preview-pane-loading"));
+function initializeMetadataPreviewPane(props: SectionInitHookArgs) {
+  refreshMetadataPreviewPane = () => props.refresh();
+  renderInitialState(props);
 }
 
-async function renderMetadataPreview(props: SectionHookArgs) {
+function destroyMetadataPreviewPane() {
+  refreshMetadataPreviewPane = null;
+}
+
+function renderInitialState(props: SectionHookArgs) {
   const root = getPreviewRoot(props.body);
-  const token = nextRenderToken(root);
+  disablePreviewPane(props, root);
+}
+
+function renderMetadataPreview(props: SectionHookArgs) {
+  const root = getPreviewRoot(props.body);
   const regularItem = props.item?.isRegularItem?.() === true;
+  const previewState = getPreviewStateForItem(props.item);
 
-  props.setEnabled(regularItem);
-  if (!regularItem) {
-    props.setSectionSummary("");
-    renderMessage(root, getString("metadata-preview-pane-unavailable"));
+  if (!regularItem || !previewState) {
+    disablePreviewPane(props, root);
     return;
   }
 
-  props.setSectionSummary(getString("metadata-preview-pane-loading"));
-  renderMessage(root, getString("metadata-preview-pane-loading"), {
-    loading: true,
-  });
-
-  const result = await previewMetadataUpdateForItem(props.item);
-  if (root.dataset.renderToken !== token) {
+  props.setEnabled(true);
+  if (previewState.status === "pending") {
+    root.dataset.renderToken = String(
+      Number(root.dataset.renderToken || "0") + 1,
+    );
+    props.setSectionSummary(getString("metadata-preview-pane-loading"));
+    renderMessage(root, getString("metadata-preview-pane-loading"), {
+      loading: true,
+    });
     return;
   }
 
-  renderPreviewResult(root, result);
-  props.setSectionSummary(getPreviewSummary(result));
+  root.dataset.renderToken = String(
+    Number(root.dataset.renderToken || "0") + 1,
+  );
+  renderPreviewResult(root, previewState);
+  props.setSectionSummary(getPreviewSummary(previewState));
+}
+
+function disablePreviewPane(props: SectionHookArgs, root: HTMLElement) {
+  props.setEnabled(false);
+  props.setSectionSummary("");
+  root.replaceChildren();
+}
+
+function getPreviewStateForItem(item: Zotero.Item | undefined) {
+  const itemKey = getItemKey(item);
+  if (!itemKey || !visibleItemKeys.has(itemKey)) {
+    return null;
+  }
+
+  return previewResultsByItemKey.get(itemKey) ?? null;
+}
+
+function getItemKey(item: Zotero.Item | undefined) {
+  if (!item) {
+    return "";
+  }
+
+  const itemID = Number(item.id || 0);
+  if (!itemID) {
+    return "";
+  }
+
+  const libraryID = Number(item.libraryID || 0);
+  return `${libraryID}:${itemID}`;
 }
 
 function getPreviewRoot(body: HTMLDivElement) {
@@ -140,12 +222,6 @@ function getPreviewRoot(body: HTMLDivElement) {
   root.className = "metadata-preview-pane";
   body.replaceChildren(root);
   return root;
-}
-
-function nextRenderToken(root: HTMLElement) {
-  const token = String(Number(root.dataset.renderToken || "0") + 1);
-  root.dataset.renderToken = token;
-  return token;
 }
 
 function renderPreviewResult(
@@ -256,7 +332,7 @@ function createSkipRow(root: HTMLElement, skip: MetadataSkip) {
 
   const reason = doc.createElement("div");
   reason.className = "metadata-preview-reason";
-  reason.textContent = skip.reason;
+  reason.textContent = getSkipReasonLabel(skip.reason);
 
   row.append(field, reason);
   return row;
@@ -317,6 +393,31 @@ function getUnavailableMessage(reason: string) {
   }
 
   return getString("metadata-preview-pane-unavailable");
+}
+
+function getSkipReasonLabel(reason: string) {
+  switch (reason) {
+    case "skip unchanged creators":
+    case "skip unchanged value":
+    case "skip unchanged tags":
+      return getString("metadata-preview-skip-unchanged");
+    case "skip empty creators":
+    case "skip empty value":
+    case "skip empty tags":
+      return getString("metadata-preview-skip-empty");
+    case "skip unrelated title":
+      return getString("metadata-preview-skip-unrelated-title");
+    case "skip lower precision date":
+      return getString("metadata-preview-skip-lower-precision-date");
+    default:
+      return getString("metadata-preview-skip-default");
+  }
+}
+
+function refreshPreviewPane() {
+  void refreshMetadataPreviewPane?.().catch((err) => {
+    ztoolkit.log("Unable to refresh metadata preview pane", err);
+  });
 }
 
 function getFieldLabel(field: string) {

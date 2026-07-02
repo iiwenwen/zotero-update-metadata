@@ -87,6 +87,8 @@ try {
   } = require(menuOutfile);
   const {
     registerMetadataPreviewPane,
+    showMetadataPreviewPaneForItems,
+    showMetadataPreviewPaneResult,
     unregisterMetadataPreviewPane,
   } = require(metadataPreviewPaneOutfile);
 
@@ -871,6 +873,8 @@ try {
   await assertMetadataPreviewForItemContract(previewMetadataUpdateForItem);
   await assertMetadataPreviewPaneContract({
     registerMetadataPreviewPane,
+    showMetadataPreviewPaneForItems,
+    showMetadataPreviewPaneResult,
     unregisterMetadataPreviewPane,
   });
 
@@ -1002,7 +1006,7 @@ async function assertMetadataPreviewForItemContract(
   );
 }
 
-function assertMetadataPreviewPaneContract(previewPaneApi) {
+async function assertMetadataPreviewPaneContract(previewPaneApi) {
   const registeredSheets = new Set();
   const registeredSections = [];
   const unregisteredSections = [];
@@ -1013,6 +1017,8 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
       publisher: "Vintage",
     },
   ];
+  let translateCount = 0;
+  let refreshCount = 0;
 
   globalThis.Services = {
     io: {
@@ -1075,6 +1081,7 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
       }
 
       async translate() {
+        translateCount += 1;
         return translatedWebItems;
       }
     },
@@ -1119,6 +1126,7 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
     registeredSections[0].header.l10nID,
     "updatemetadata-metadata-preview-pane-label",
   );
+  assert.equal(typeof registeredSections[0].onInit, "function");
   assert.equal(typeof registeredSections[0].onRender, "function");
   assert.equal(typeof registeredSections[0].onAsyncRender, "function");
   assert.equal(
@@ -1127,67 +1135,112 @@ function assertMetadataPreviewPaneContract(previewPaneApi) {
   );
 
   const body = createPreviewBody();
-  registeredSections[0].onRender({
+  const previewItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      url: "https://book.douban.com/subject/1355643/",
+      title: "Norwegian Wood",
+      publisher: "Existing Publisher",
+    },
+    tags: [],
+  });
+  let enabled = null;
+  let summary = "stale";
+  const props = {
     body,
-    item: createMockItem({
-      itemTypeID: 1,
-      fields: {
-        url: "https://book.douban.com/subject/1355643/",
-      },
-      tags: [],
-    }),
+    item: previewItem,
     tabType: "library",
     editable: true,
     setEnabled(value) {
-      return !value;
+      enabled = value;
+      return false;
     },
     setSectionSummary(value) {
+      summary = value;
       return value;
     },
     setL10nArgs() {},
     setSectionButtonStatus() {},
-  });
+  };
 
-  let enabled = null;
-  let summary = "";
-  return Promise.resolve(
-    registeredSections[0].onAsyncRender({
-      body,
-      item: createMockItem({
-        itemTypeID: 1,
-        fields: {
-          url: "https://book.douban.com/subject/1355643/",
-          title: "Norwegian Wood",
-          publisher: "Existing Publisher",
+  registeredSections[0].onInit({
+    ...props,
+    refresh() {
+      refreshCount += 1;
+      return Promise.resolve();
+    },
+  });
+  assert.equal(enabled, false);
+  assert.equal(summary, "");
+  assert.equal(collectPreviewText(body), "");
+
+  enabled = null;
+  summary = "stale";
+  await registeredSections[0].onAsyncRender(props);
+  assert.equal(enabled, false);
+  assert.equal(summary, "");
+  assert.equal(collectPreviewText(body), "");
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane should not translate before a user action reveals it",
+  );
+
+  previewPaneApi.showMetadataPreviewPaneForItems([previewItem]);
+  assert.equal(refreshCount, 1);
+
+  enabled = null;
+  summary = "";
+  await registeredSections[0].onAsyncRender(props);
+  let renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-loading");
+  assert.equal(renderedText, "metadata-preview-pane-loading");
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane pending state should not translate independently",
+  );
+
+  previewPaneApi.showMetadataPreviewPaneResult(previewItem, {
+    status: "ready",
+    provider: "douban-url",
+    attempts: [],
+    update: {
+      applied: [
+        {
+          field: "publisher",
+          oldValue: "Existing Publisher",
+          newValue: "Vintage",
         },
-        tags: [],
-      }),
-      tabType: "library",
-      editable: true,
-      setEnabled(value) {
-        enabled = value;
-        return false;
-      },
-      setSectionSummary(value) {
-        summary = value;
-        return value;
-      },
-      setL10nArgs() {},
-      setSectionButtonStatus() {},
-    }),
-  ).then(() => {
-    const renderedText = collectPreviewText(body);
-    assert.equal(enabled, true);
-    assert.equal(summary, "metadata-preview-pane-summary-ready");
-    assert.match(renderedText, /metadata-preview-pane-updatable/);
-    assert.match(renderedText, /localized:publisher/);
-    assert.match(renderedText, /Existing Publisher/);
-    assert.match(renderedText, /Vintage/);
-
-    previewPaneApi.unregisterMetadataPreviewPane();
-    assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
-    assert.equal(registeredSheets.size, 0);
+      ],
+      skipped: [
+        {
+          field: "title",
+          reason: "skip unchanged value",
+        },
+      ],
+    },
   });
+  assert.equal(refreshCount, 2);
+
+  enabled = null;
+  summary = "";
+  await registeredSections[0].onAsyncRender(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-ready");
+  assert.equal(translateCount, 0);
+  assert.match(renderedText, /metadata-preview-pane-updatable/);
+  assert.match(renderedText, /localized:publisher/);
+  assert.match(renderedText, /Existing Publisher/);
+  assert.match(renderedText, /Vintage/);
+  assert.match(renderedText, /metadata-preview-skip-unchanged/);
+  assert.doesNotMatch(renderedText, /skip unchanged|skip empty/);
+
+  previewPaneApi.unregisterMetadataPreviewPane();
+  assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
+  assert.equal(registeredSheets.size, 0);
 }
 
 function createPreviewBody() {
@@ -1299,7 +1352,22 @@ function assertMenuActionContract(parent, actions, menuApi) {
   );
   assert.match(
     menuSource,
-    /items:\s*items\s*\?\?\s*getSelectedItems\(win\)/,
+    /schema\s*===\s*"update"/,
+    "metadata preview pane should only be revealed for update actions",
+  );
+  assert.match(
+    menuSource,
+    /showMetadataPreviewPaneForItems\(selectedItems\)/,
+    "metadata update actions should reveal the preview pane for the selected items",
+  );
+  assert.match(
+    menuSource,
+    /onUpdatePreview:\s*[\s\S]*showMetadataPreviewPaneResult/,
+    "metadata update actions should pass update results into the preview pane",
+  );
+  assert.match(
+    menuSource,
+    /const selectedItems = items \?\? getSelectedItems\(win\)/,
     "fallback menu commands should use the current Zotero selection",
   );
   assert.match(
