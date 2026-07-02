@@ -47,6 +47,7 @@ export function registerMetadataPreviewPane() {
     bodyXHTML: `<div class="metadata-preview-pane"></div>`,
     onInit: initializeMetadataPreviewPane,
     onRender: renderInitialState,
+    onItemChange: renderMetadataPreview,
     onAsyncRender: renderMetadataPreview,
     onDestroy: destroyMetadataPreviewPane,
   });
@@ -145,7 +146,7 @@ function getStyleSheetService() {
 
 function initializeMetadataPreviewPane(props: SectionInitHookArgs) {
   refreshMetadataPreviewPane = () => props.refresh();
-  getPreviewRoot(props.body);
+  renderIdlePreviewPane(props, getPreviewRoot(props.body));
 }
 
 function destroyMetadataPreviewPane() {

@@ -1128,6 +1128,7 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   );
   assert.equal(typeof registeredSections[0].onInit, "function");
   assert.equal(typeof registeredSections[0].onRender, "function");
+  assert.equal(typeof registeredSections[0].onItemChange, "function");
   assert.equal(typeof registeredSections[0].onAsyncRender, "function");
   assert.equal(
     registeredSheets.has("chrome://updatemetadata/content/zoteroPane.css"),
@@ -1170,14 +1171,21 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
       return Promise.resolve();
     },
   });
-  assert.equal(enabled, null);
-  assert.equal(summary, "stale");
-  assert.equal(collectPreviewText(body), "");
+  let renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-status-idle/);
+  assert.match(renderedText, /metadata-preview-pane-idle/);
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane init state should not translate independently",
+  );
 
   enabled = null;
   summary = "stale";
   registeredSections[0].onRender(props);
-  let renderedText = collectPreviewText(body);
+  renderedText = collectPreviewText(body);
   assert.equal(enabled, true);
   assert.equal(summary, "metadata-preview-pane-summary-idle");
   assert.match(renderedText, /metadata-preview-status-idle/);
@@ -1190,6 +1198,19 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
     translateCount,
     0,
     "metadata preview pane idle state should not translate independently",
+  );
+
+  enabled = null;
+  summary = "stale";
+  registeredSections[0].onItemChange(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-idle");
+  assert.match(renderedText, /metadata-preview-pane-idle/);
+  assert.equal(
+    translateCount,
+    0,
+    "metadata preview pane item-change state should not translate independently",
   );
 
   enabled = null;

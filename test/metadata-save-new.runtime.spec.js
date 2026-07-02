@@ -46,7 +46,9 @@ describe("metadata save-new runtime", function () {
     );
 
     assert.isOk(section, "metadata preview section should be registered");
+    assert.equal(typeof section.onInit, "function");
     assert.equal(typeof section.onRender, "function");
+    assert.equal(typeof section.onItemChange, "function");
     assert.equal(typeof section.onAsyncRender, "function");
     assert.include(
       section.bodyXHTML,
@@ -60,8 +62,8 @@ describe("metadata save-new runtime", function () {
 
     const body = window.document.createElement("div");
     let enabled = null;
-    let summary = "";
-    section.onRender({
+    let summary = null;
+    const props = {
       body,
       item,
       tabType: "library",
@@ -76,11 +78,40 @@ describe("metadata save-new runtime", function () {
       },
       setL10nArgs() {},
       setSectionButtonStatus() {},
+    };
+
+    section.onInit({
+      ...props,
+      refresh() {
+        return Promise.resolve();
+      },
     });
 
     assert.isTrue(
       enabled,
+      "metadata preview section should be visible immediately after init",
+    );
+    assert.isString(summary);
+    assert.isAbove(summary.length, 0);
+
+    enabled = null;
+    summary = null;
+    section.onRender(props);
+
+    assert.isTrue(
+      enabled,
       "metadata preview section should stay visible before update actions",
+    );
+    assert.isString(summary);
+    assert.isAbove(summary.length, 0);
+
+    enabled = null;
+    summary = null;
+    section.onItemChange(props);
+
+    assert.isTrue(
+      enabled,
+      "metadata preview section should stay visible after item changes",
     );
     assert.isString(summary);
     assert.isAbove(summary.length, 0);
