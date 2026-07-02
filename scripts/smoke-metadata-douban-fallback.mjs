@@ -246,6 +246,11 @@ try {
         return { book: 1, webpage: 2 }[itemType] || 0;
       },
     },
+    CreatorTypes: {
+      getName(creatorTypeID) {
+        return { 1: "author" }[creatorTypeID] || "";
+      },
+    },
     ItemFields: {
       getID(field) {
         return field;
@@ -370,6 +375,42 @@ try {
   assert.match(previewText, /ISBN: \(empty\) -> 9780099448822/);
   assert.match(previewText, /date: skipped \(skip lower precision date\)/);
   assert.match(previewText, /tags: manual tag -> manual tag, translated tag/);
+
+  const equivalentPreviewItem = createMockItem({
+    itemTypeID: 1,
+    fields: {
+      title: "了不起的我",
+      ISBN: "978-7-5470-7126-7",
+      publisher: "百花洲文艺出版社",
+    },
+    creators: [
+      {
+        creatorTypeID: 1,
+        lastName: "陈海贤",
+        fieldMode: 1,
+      },
+    ],
+    tags: [],
+  });
+  const equivalentPreviewResult = buildMetadataUpdatePreview(
+    {
+      title: "了不起的我",
+      creators: [{ creatorType: "author", lastName: "陈海贤" }],
+      ISBN: "9787547071267",
+      publisher: "百花洲文艺出版社",
+    },
+    equivalentPreviewItem,
+  );
+
+  assert.equal(
+    equivalentPreviewResult.applied.length,
+    0,
+    "equivalent metadata should not be shown as updateable",
+  );
+  assert.deepEqual(
+    new Set(equivalentPreviewResult.skipped.map((skip) => skip.field)),
+    new Set(["title", "creators", "ISBN", "publisher"]),
+  );
 
   const cancelItem = createMockItem({
     itemTypeID: 1,
@@ -1125,6 +1166,27 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   assert.equal(
     registeredSections[0].header.l10nID,
     "updatemetadata-metadata-preview-pane-label",
+  );
+  assert.equal(
+    registeredSections[0].sidenav.icon,
+    "chrome://zotero/skin/itempane/16/info.svg",
+  );
+  assert.equal(
+    registeredSections[0].header.icon,
+    "chrome://zotero/skin/itempane/20/info.svg",
+  );
+  assert.equal(
+    registeredSections[0].sidenav.darkIcon,
+    registeredSections[0].sidenav.icon,
+  );
+  assert.equal(
+    registeredSections[0].header.darkIcon,
+    registeredSections[0].header.icon,
+  );
+  assert.doesNotMatch(
+    registeredSections[0].sidenav.icon,
+    /favicon/,
+    "metadata preview pane sidenav should use Zotero item-pane icon style",
   );
   assert.equal(typeof registeredSections[0].onInit, "function");
   assert.equal(typeof registeredSections[0].onRender, "function");
@@ -1885,13 +1947,20 @@ function createMockDocument({ title, selectors }) {
   };
 }
 
-function createMockItem({ itemTypeID, fields, tags, attachments = [] }) {
+function createMockItem({
+  itemTypeID,
+  fields,
+  tags,
+  creators = [],
+  attachments = [],
+}) {
   return {
     id: 100,
     libraryID: 1,
     itemTypeID,
     fields: { ...fields },
     tags: [...tags],
+    creators: [...creators],
     attachments: [...attachments],
     saveCount: 0,
     getField(field) {
@@ -1905,6 +1974,9 @@ function createMockItem({ itemTypeID, fields, tags, attachments = [] }) {
     },
     setCreators(creators) {
       this.creators = creators;
+    },
+    getCreators() {
+      return [...this.creators];
     },
     getTags() {
       return [...this.tags];

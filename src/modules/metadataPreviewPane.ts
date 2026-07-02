@@ -10,7 +10,8 @@ import {
 
 const PANE_ID = `${config.addonRef}-metadata-preview`;
 const STYLE_URI = `chrome://${config.addonRef}/content/zoteroPane.css`;
-const ICON_URI = `chrome://${config.addonRef}/content/icons/favicon.png`;
+const SIDENAV_ICON_URI = "chrome://zotero/skin/itempane/16/info.svg";
+const HEADER_ICON_URI = "chrome://zotero/skin/itempane/20/info.svg";
 
 let registeredSectionKey: string | null = null;
 let registeredStyleURI: nsIURI | null = null;
@@ -37,11 +38,13 @@ export function registerMetadataPreviewPane() {
     paneID: PANE_ID,
     pluginID: config.addonID,
     sidenav: {
-      icon: ICON_URI,
+      icon: SIDENAV_ICON_URI,
+      darkIcon: SIDENAV_ICON_URI,
       l10nID: `${config.addonRef}-metadata-preview-pane-label`,
     },
     header: {
-      icon: ICON_URI,
+      icon: HEADER_ICON_URI,
+      darkIcon: HEADER_ICON_URI,
       l10nID: `${config.addonRef}-metadata-preview-pane-label`,
     },
     bodyXHTML: `<div class="metadata-preview-pane"></div>`,
