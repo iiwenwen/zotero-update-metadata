@@ -26,7 +26,6 @@ async function onStartup() {
   initLocale();
 
   registerPrefsWindow();
-  registerMetadataPreviewPane();
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -38,6 +37,7 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   // Create ztoolkit for every window
   addon.data.mainWindow = win;
   addon.data.ztoolkit = createZToolkit();
+  registerMetadataPreviewPane();
 
   const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
     closeOnClick: true,

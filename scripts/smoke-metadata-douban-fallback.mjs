@@ -918,6 +918,7 @@ try {
     showMetadataPreviewPaneResult,
     unregisterMetadataPreviewPane,
   });
+  assertMetadataPreviewPaneLifecycleContract();
 
   console.log("metadata douban fallback smoke: pass");
 } finally {
@@ -1127,6 +1128,19 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
       }
     },
   };
+  delete globalThis.Zotero.ItemPaneManager;
+  assert.equal(previewPaneApi.registerMetadataPreviewPane(), false);
+  assert.equal(
+    registeredSections.length,
+    0,
+    "metadata preview pane should retry after ItemPaneManager becomes available",
+  );
+  assert.equal(
+    registeredSheets.has("chrome://updatemetadata/content/zoteroPane.css"),
+    true,
+    "metadata preview pane should keep stylesheet registration independent from section readiness",
+  );
+
   globalThis.Zotero.ItemPaneManager = {
     registerSection(options) {
       assert.equal(
@@ -1156,8 +1170,14 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
     },
   };
 
-  previewPaneApi.registerMetadataPreviewPane();
+  assert.equal(previewPaneApi.registerMetadataPreviewPane(), true);
   assert.equal(registeredSections.length, 1);
+  assert.equal(previewPaneApi.registerMetadataPreviewPane(), true);
+  assert.equal(
+    registeredSections.length,
+    1,
+    "metadata preview pane registration should be idempotent after success",
+  );
   assert.equal(registeredSections[0].paneID, "updatemetadata-metadata-preview");
   assert.equal(
     registeredSections[0].pluginID,
@@ -1455,6 +1475,48 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   previewPaneApi.unregisterMetadataPreviewPane();
   assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
   assert.equal(registeredSheets.size, 0);
+}
+
+function assertMetadataPreviewPaneLifecycleContract() {
+  const hooksSource = readFileSync("src/hooks.ts", "utf8");
+  const startupBody = extractFunctionBody(hooksSource, "onStartup");
+  const mainWindowLoadBody = extractFunctionBody(
+    hooksSource,
+    "onMainWindowLoad",
+  );
+
+  assert.doesNotMatch(
+    startupBody,
+    /registerMetadataPreviewPane\(\)/,
+    "metadata preview pane registration should not be a startup-only one-shot",
+  );
+  assert.match(
+    mainWindowLoadBody,
+    /addon\.data\.ztoolkit\s*=\s*createZToolkit\(\);\s*registerMetadataPreviewPane\(\);/,
+    "metadata preview pane should register after each main window has toolkit context",
+  );
+}
+
+function extractFunctionBody(source, functionName) {
+  const signatureIndex = source.indexOf(`function ${functionName}`);
+  assert.notEqual(signatureIndex, -1, `${functionName} should exist`);
+  const bodyStart = source.indexOf("{", signatureIndex);
+  assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
+
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(bodyStart + 1, index);
+      }
+    }
+  }
+
+  assert.fail(`${functionName} body should close`);
 }
 
 function createPreviewBody() {
