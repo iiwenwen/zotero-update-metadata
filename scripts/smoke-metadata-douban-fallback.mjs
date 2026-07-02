@@ -1195,7 +1195,17 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   let renderedText = collectPreviewText(body);
   assert.equal(enabled, true);
   assert.equal(summary, "metadata-preview-pane-loading");
-  assert.equal(renderedText, "metadata-preview-pane-loading");
+  assert.match(renderedText, /metadata-preview-status-loading/);
+  assert.match(renderedText, /metadata-preview-pane-loading/);
+  const pendingOverview = body.querySelector(
+    ".metadata-preview-overview-loading",
+  );
+  assert.ok(
+    pendingOverview,
+    "metadata preview pending state should render a status overview",
+  );
+  assert.equal(pendingOverview.getAttribute("role"), "status");
+  assert.equal(pendingOverview.getAttribute("aria-live"), "polite");
   assert.equal(
     translateCount,
     0,
@@ -1231,12 +1241,114 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   assert.equal(enabled, true);
   assert.equal(summary, "metadata-preview-pane-summary-ready");
   assert.equal(translateCount, 0);
+  assert.match(renderedText, /metadata-preview-status-ready/);
   assert.match(renderedText, /metadata-preview-pane-updatable/);
   assert.match(renderedText, /localized:publisher/);
   assert.match(renderedText, /Existing Publisher/);
   assert.match(renderedText, /Vintage/);
   assert.match(renderedText, /metadata-preview-skip-unchanged/);
   assert.doesNotMatch(renderedText, /skip unchanged|skip empty/);
+  assert.ok(
+    body.querySelector(".metadata-preview-overview"),
+    "metadata preview pane should render a compact status overview",
+  );
+  const readyOverview = body.querySelector(".metadata-preview-overview-ready");
+  assert.equal(readyOverview.getAttribute("role"), "status");
+  assert.equal(readyOverview.getAttribute("aria-atomic"), "true");
+  assert.ok(
+    body.querySelector(".metadata-preview-provider"),
+    "metadata preview pane should show the metadata provider in the overview",
+  );
+  assert.equal(
+    body.querySelector(".metadata-preview-provider").getAttribute("title"),
+    "douban-url",
+  );
+  assert.equal(
+    body.querySelector(".metadata-preview-provider").getAttribute("aria-label"),
+    "metadata-preview-pane-provider: douban-url",
+  );
+  assert.equal(
+    body
+      .querySelector(".metadata-preview-metric-change")
+      .getAttribute("aria-label"),
+    "metadata-preview-pane-updatable: 1",
+  );
+  assert.ok(
+    body.querySelector(".metadata-preview-group-count"),
+    "metadata preview groups should expose a visible item count",
+  );
+  const paneStyles = readFileSync("addon/content/zoteroPane.css", "utf8");
+  assert.match(
+    paneStyles,
+    /container-type:\s*inline-size/,
+    "metadata preview pane should use container-aware responsive layout",
+  );
+  assert.match(
+    paneStyles,
+    /@container\s*\(max-width:\s*340px\)/,
+    "metadata preview rows should collapse when the pane itself is narrow",
+  );
+  assert.match(
+    paneStyles,
+    /@media\s*\(forced-colors:\s*active\)/,
+    "metadata preview pane should include high-contrast color overrides",
+  );
+
+  previewPaneApi.showMetadataPreviewPaneResult(previewItem, {
+    status: "skipped",
+    update: {
+      applied: [],
+      skipped: [],
+    },
+  });
+  enabled = null;
+  summary = "";
+  await registeredSections[0].onAsyncRender(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-empty");
+  assert.match(renderedText, /metadata-preview-status-skipped/);
+  assert.ok(body.querySelector(".metadata-preview-overview-skipped"));
+  assert.ok(body.querySelector(".metadata-preview-message"));
+
+  previewPaneApi.showMetadataPreviewPaneResult(previewItem, {
+    status: "error",
+    error: "boom",
+  });
+  enabled = null;
+  summary = "";
+  await registeredSections[0].onAsyncRender(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-error");
+  assert.match(renderedText, /metadata-preview-status-error/);
+  assert.match(renderedText, /metadata-preview-pane-error/);
+  assert.match(renderedText, /boom/);
+  assert.ok(body.querySelector(".metadata-preview-overview-error"));
+  assert.equal(
+    body.querySelector(".metadata-preview-message-error").getAttribute("role"),
+    "alert",
+  );
+
+  previewPaneApi.showMetadataPreviewPaneResult(previewItem, {
+    status: "unavailable",
+    reason: "missing URL",
+  });
+  enabled = null;
+  summary = "";
+  await registeredSections[0].onAsyncRender(props);
+  renderedText = collectPreviewText(body);
+  assert.equal(enabled, true);
+  assert.equal(summary, "metadata-preview-pane-summary-unavailable");
+  assert.match(renderedText, /metadata-preview-status-unavailable/);
+  assert.match(renderedText, /metadata-preview-pane-missing-url/);
+  assert.ok(body.querySelector(".metadata-preview-overview-unavailable"));
+  assert.equal(
+    body
+      .querySelector(".metadata-preview-message-warning")
+      .getAttribute("role"),
+    "status",
+  );
 
   previewPaneApi.unregisterMetadataPreviewPane();
   assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
@@ -1257,6 +1369,7 @@ function createPreviewElement(ownerDocument, tagName) {
     ownerDocument,
     tagName,
     className: "",
+    attributes: {},
     dataset: {},
     children: [],
     textContent: "",
@@ -1265,6 +1378,12 @@ function createPreviewElement(ownerDocument, tagName) {
     },
     replaceChildren(...children) {
       this.children = [...children];
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] ?? null;
     },
     querySelector(selector) {
       if (!selector.startsWith(".")) {

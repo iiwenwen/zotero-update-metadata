@@ -22,6 +22,8 @@ type SectionInitHookArgs =
   _ZoteroTypes.ItemPaneManagerSection.SectionInitHookArgs;
 type MetadataPreviewPaneState =
   MetadataUpdatePreviewForItemResult | { status: "pending" };
+type MetadataPreviewOverviewTone =
+  "loading" | "ready" | "skipped" | "error" | "unavailable";
 
 export function registerMetadataPreviewPane() {
   registerMetadataPreviewStyles();
@@ -169,9 +171,13 @@ function renderMetadataPreview(props: SectionHookArgs) {
     root.dataset.renderToken = String(
       Number(root.dataset.renderToken || "0") + 1,
     );
+    root.dataset.previewStatus = "pending";
     props.setSectionSummary(getString("metadata-preview-pane-loading"));
-    renderMessage(root, getString("metadata-preview-pane-loading"), {
-      loading: true,
+    root.replaceChildren();
+    appendOverview(root, {
+      summary: getString("metadata-preview-pane-loading"),
+      statusLabel: getString("metadata-preview-status-loading"),
+      tone: "loading",
     });
     return;
   }
@@ -229,39 +235,174 @@ function renderPreviewResult(
   result: MetadataUpdatePreviewForItemResult,
 ) {
   root.replaceChildren();
+  root.dataset.previewStatus = result.status;
 
   if (result.status === "ready") {
-    appendProvider(root, result.provider);
+    appendOverview(root, {
+      summary: getPreviewSummary(result),
+      statusLabel: getString("metadata-preview-status-ready"),
+      tone: "ready",
+      provider: result.provider,
+      changeCount: result.update.applied.length,
+      skipCount: result.update.skipped.length,
+    });
     appendChanges(root, result.update.applied);
     appendSkips(root, result.update.skipped);
     return;
   }
 
   if (result.status === "skipped") {
+    appendOverview(root, {
+      summary: getString("metadata-preview-pane-empty"),
+      statusLabel: getString("metadata-preview-status-skipped"),
+      tone: "skipped",
+      skipCount: result.update.skipped.length,
+    });
     appendSkips(root, result.update.skipped);
     if (!result.update.skipped.length) {
-      renderMessage(root, getString("metadata-preview-pane-empty"));
+      appendMessage(root, getString("metadata-preview-pane-empty"));
     }
     return;
   }
 
   if (result.status === "error") {
-    renderMessage(root, getString("metadata-preview-pane-error"));
+    appendOverview(root, {
+      summary: getPreviewSummary(result),
+      statusLabel: getString("metadata-preview-status-error"),
+      tone: "error",
+    });
+    appendMessage(root, getString("metadata-preview-pane-error"), {
+      tone: "error",
+    });
     appendDetails(root, result.error);
     return;
   }
 
-  renderMessage(root, getUnavailableMessage(result.reason));
+  appendOverview(root, {
+    summary: getPreviewSummary(result),
+    statusLabel: getString("metadata-preview-status-unavailable"),
+    tone: "unavailable",
+  });
+  appendMessage(root, getUnavailableMessage(result.reason), {
+    tone: "warning",
+  });
 }
 
-function appendProvider(root: HTMLElement, provider: string) {
+function appendOverview(
+  root: HTMLElement,
+  options: {
+    summary: string;
+    statusLabel?: string;
+    tone?: MetadataPreviewOverviewTone;
+    provider?: string;
+    changeCount?: number;
+    skipCount?: number;
+  },
+) {
   const doc = root.ownerDocument!;
-  const providerElement = doc.createElement("div");
+  const overview = doc.createElement("div");
+  overview.className = [
+    "metadata-preview-overview",
+    options.tone ? `metadata-preview-overview-${options.tone}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  overview.setAttribute("role", "status");
+  overview.setAttribute("aria-live", "polite");
+  overview.setAttribute("aria-atomic", "true");
+
+  if (options.statusLabel) {
+    overview.append(createStatusChip(root, options.statusLabel, options.tone));
+  }
+
+  const summary = doc.createElement("div");
+  summary.className = "metadata-preview-summary";
+  summary.textContent = options.summary;
+  overview.append(summary);
+
+  const meta = doc.createElement("div");
+  meta.className = "metadata-preview-meta";
+  if (options.provider) {
+    meta.append(createProviderChip(root, options.provider));
+  }
+  if (typeof options.changeCount === "number") {
+    meta.append(
+      createMetric(
+        root,
+        "metadata-preview-metric-change",
+        getString("metadata-preview-pane-updatable"),
+        options.changeCount,
+      ),
+    );
+  }
+  if (typeof options.skipCount === "number") {
+    meta.append(
+      createMetric(
+        root,
+        "metadata-preview-metric-skip",
+        getString("metadata-preview-pane-skipped"),
+        options.skipCount,
+      ),
+    );
+  }
+  if (meta.children.length) {
+    overview.append(meta);
+  }
+
+  root.append(overview);
+}
+
+function createProviderChip(root: HTMLElement, provider: string) {
+  const providerElement = root.ownerDocument!.createElement("div");
   providerElement.className = "metadata-preview-provider";
-  providerElement.textContent = `${getString(
-    "metadata-preview-pane-provider",
-  )}: ${provider}`;
-  root.append(providerElement);
+  const label = getString("metadata-preview-pane-provider");
+  providerElement.textContent = `${label}: ${provider}`;
+  providerElement.setAttribute("title", provider);
+  providerElement.setAttribute("aria-label", `${label}: ${provider}`);
+  return providerElement;
+}
+
+function createStatusChip(
+  root: HTMLElement,
+  label: string,
+  tone: MetadataPreviewOverviewTone = "ready",
+) {
+  const status = root.ownerDocument!.createElement("div");
+  status.className = `metadata-preview-status metadata-preview-status-${tone}`;
+  status.setAttribute("aria-label", label);
+
+  const dot = root.ownerDocument!.createElement("span");
+  dot.className = "metadata-preview-status-dot";
+  dot.setAttribute("aria-hidden", "true");
+
+  const text = root.ownerDocument!.createElement("span");
+  text.className = "metadata-preview-status-label";
+  text.textContent = label;
+
+  status.append(dot, text);
+  return status;
+}
+
+function createMetric(
+  root: HTMLElement,
+  className: string,
+  label: string,
+  count: number,
+) {
+  const metric = root.ownerDocument!.createElement("div");
+  metric.className = `metadata-preview-metric ${className}`;
+  metric.setAttribute("aria-label", `${label}: ${count}`);
+
+  const value = root.ownerDocument!.createElement("span");
+  value.className = "metadata-preview-metric-value";
+  value.textContent = String(count);
+
+  const labelElement = root.ownerDocument!.createElement("span");
+  labelElement.className = "metadata-preview-metric-label";
+  labelElement.textContent = label;
+
+  metric.append(value, labelElement);
+  return metric;
 }
 
 function appendChanges(root: HTMLElement, changes: MetadataChange[]) {
@@ -269,7 +410,12 @@ function appendChanges(root: HTMLElement, changes: MetadataChange[]) {
     return;
   }
 
-  const group = createGroup(root, getString("metadata-preview-pane-updatable"));
+  const group = createGroup(
+    root,
+    getString("metadata-preview-pane-updatable"),
+    changes.length,
+    "change",
+  );
   for (const change of changes) {
     group.append(createChangeRow(root, change));
   }
@@ -281,21 +427,37 @@ function appendSkips(root: HTMLElement, skips: MetadataSkip[]) {
     return;
   }
 
-  const group = createGroup(root, getString("metadata-preview-pane-skipped"));
+  const group = createGroup(
+    root,
+    getString("metadata-preview-pane-skipped"),
+    skips.length,
+    "skip",
+  );
   for (const skip of skips) {
     group.append(createSkipRow(root, skip));
   }
   root.append(group);
 }
 
-function createGroup(root: HTMLElement, title: string) {
+function createGroup(
+  root: HTMLElement,
+  title: string,
+  count: number,
+  tone: "change" | "skip",
+) {
   const doc = root.ownerDocument!;
   const group = doc.createElement("section");
-  group.className = "metadata-preview-group";
+  group.className = `metadata-preview-group metadata-preview-group-${tone}`;
 
+  const headingRow = doc.createElement("div");
+  headingRow.className = "metadata-preview-group-heading";
   const heading = doc.createElement("h4");
   heading.textContent = title;
-  group.append(heading);
+  const countElement = doc.createElement("span");
+  countElement.className = "metadata-preview-group-count";
+  countElement.textContent = String(count);
+  headingRow.append(heading, countElement);
+  group.append(headingRow);
 
   return group;
 }
@@ -311,14 +473,36 @@ function createChangeRow(root: HTMLElement, change: MetadataChange) {
 
   const oldValue = doc.createElement("div");
   oldValue.className = "metadata-preview-value metadata-preview-value-old";
-  oldValue.textContent = formatMetadataPreviewValue(change.oldValue);
+  oldValue.dataset.valueRole = "old";
+  oldValue.append(
+    createValueLabel(root, getString("metadata-preview-value-current")),
+    createValueText(root, formatMetadataPreviewValue(change.oldValue)),
+  );
 
   const newValue = doc.createElement("div");
   newValue.className = "metadata-preview-value metadata-preview-value-new";
-  newValue.textContent = formatMetadataPreviewValue(change.newValue);
+  newValue.dataset.valueRole = "new";
+  newValue.append(
+    createValueLabel(root, getString("metadata-preview-value-source")),
+    createValueText(root, formatMetadataPreviewValue(change.newValue)),
+  );
 
   row.append(field, oldValue, newValue);
   return row;
+}
+
+function createValueLabel(root: HTMLElement, label: string) {
+  const labelElement = root.ownerDocument!.createElement("span");
+  labelElement.className = "metadata-preview-value-label";
+  labelElement.textContent = label;
+  return labelElement;
+}
+
+function createValueText(root: HTMLElement, value: string) {
+  const valueElement = root.ownerDocument!.createElement("span");
+  valueElement.className = "metadata-preview-value-text";
+  valueElement.textContent = value;
+  return valueElement;
 }
 
 function createSkipRow(root: HTMLElement, skip: MetadataSkip) {
@@ -338,16 +522,24 @@ function createSkipRow(root: HTMLElement, skip: MetadataSkip) {
   return row;
 }
 
-function renderMessage(
+function appendMessage(
   root: HTMLElement,
   message: string,
-  options: { loading?: boolean } = {},
+  options: { loading?: boolean; tone?: "loading" | "error" | "warning" } = {},
 ) {
-  root.replaceChildren();
   const messageElement = root.ownerDocument!.createElement("div");
-  messageElement.className = options.loading
-    ? "metadata-preview-message metadata-preview-message-loading"
-    : "metadata-preview-message";
+  messageElement.className = [
+    "metadata-preview-message",
+    options.loading ? "metadata-preview-message-loading" : "",
+    options.tone ? `metadata-preview-message-${options.tone}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  messageElement.setAttribute(
+    "role",
+    options.tone === "error" ? "alert" : "status",
+  );
+  messageElement.setAttribute("aria-live", "polite");
   messageElement.textContent = message;
   root.append(messageElement);
 }
