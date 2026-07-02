@@ -11,6 +11,7 @@ const requiredLogMarkers = [
   "metadata-runtime-confirm-canceled",
   "metadata-runtime-confirm-applied",
   "metadata-runtime-preview-pane-registered",
+  "metadata-runtime-preview-pane-visible",
   "metadata-runtime-save-new",
   "savedItemID",
   "attachmentCount",

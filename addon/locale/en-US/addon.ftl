@@ -25,6 +25,7 @@ message-getMeta-error = get metadata failed
 
 metadata-preview-title = Confirm metadata update
 metadata-preview-pane-label = Metadata Preview
+metadata-preview-pane-idle = Run Update Existing Item to preview safe changes.
 metadata-preview-pane-loading = Generating preview...
 metadata-preview-pane-provider = Source
 metadata-preview-pane-updatable = Can update
@@ -41,7 +42,9 @@ metadata-preview-pane-summary-ready =
     }
 metadata-preview-pane-summary-empty = No updates
 metadata-preview-pane-summary-error = Preview failed
+metadata-preview-pane-summary-idle = Ready to preview
 metadata-preview-pane-summary-unavailable = Unavailable
+metadata-preview-status-idle = Available
 metadata-preview-status-loading = Generating
 metadata-preview-status-ready = Ready
 metadata-preview-status-skipped = No changes

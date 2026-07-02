@@ -53,6 +53,21 @@
     var(--metadata-preview-surface);
 }
 
+.metadata-preview-overview-idle {
+  border-color: color-mix(
+    in srgb,
+    AccentColor 20%,
+    var(--metadata-preview-border)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, AccentColor 5%, transparent),
+      transparent 74%
+    ),
+    var(--metadata-preview-surface);
+}
+
 .metadata-preview-overview-loading {
   border-color: color-mix(
     in srgb,
@@ -156,6 +171,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.metadata-preview-status-idle {
+  color: color-mix(in srgb, AccentColor 76%, CanvasText);
+  background: color-mix(in srgb, AccentColor 7%, Canvas);
 }
 
 .metadata-preview-status-loading {

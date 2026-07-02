@@ -54,11 +54,49 @@ describe("metadata save-new runtime", function () {
       "registered section should provide preview pane body markup",
     );
 
+    const item = new Zotero.Item("book");
+    item.setField("title", "Runtime Preview Visibility");
+    item.setField("url", "https://book.douban.com/subject/1355643/");
+
+    const body = window.document.createElement("div");
+    let enabled = null;
+    let summary = "";
+    section.onRender({
+      body,
+      item,
+      tabType: "library",
+      editable: true,
+      setEnabled(value) {
+        enabled = value;
+        return value;
+      },
+      setSectionSummary(value) {
+        summary = value;
+        return value;
+      },
+      setL10nArgs() {},
+      setSectionButtonStatus() {},
+    });
+
+    assert.isTrue(
+      enabled,
+      "metadata preview section should stay visible before update actions",
+    );
+    assert.isString(summary);
+    assert.isAbove(summary.length, 0);
+    assert.isNotNull(body.querySelector(".metadata-preview-overview"));
+
     window.debug({
       marker: "metadata-runtime-preview-pane-registered",
       paneID: section.paneID,
       hasOnRender: typeof section.onRender === "function",
       hasOnAsyncRender: typeof section.onAsyncRender === "function",
+    });
+    window.debug({
+      marker: "metadata-runtime-preview-pane-visible",
+      enabled,
+      summary,
+      hasOverview: Boolean(body.querySelector(".metadata-preview-overview")),
     });
   });
 
