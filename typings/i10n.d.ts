@@ -48,6 +48,8 @@ export type FluentMessageId =
   | 'metadata-preview-skip-unchanged'
   | 'metadata-preview-skip-unrelated-title'
   | 'metadata-preview-title'
+  | 'metadata-preview-value-current'
+  | 'metadata-preview-value-source'
   | 'pref-about'
   | 'pref-attachmentStrategy'
   | 'pref-confirmBeforeUpdate'

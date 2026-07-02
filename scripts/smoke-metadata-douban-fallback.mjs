@@ -1237,6 +1237,18 @@ async function assertMetadataPreviewPaneContract(previewPaneApi) {
   assert.match(renderedText, /Vintage/);
   assert.match(renderedText, /metadata-preview-skip-unchanged/);
   assert.doesNotMatch(renderedText, /skip unchanged|skip empty/);
+  assert.ok(
+    body.querySelector(".metadata-preview-overview"),
+    "metadata preview pane should render a compact status overview",
+  );
+  assert.ok(
+    body.querySelector(".metadata-preview-provider"),
+    "metadata preview pane should show the metadata provider in the overview",
+  );
+  assert.ok(
+    body.querySelector(".metadata-preview-group-count"),
+    "metadata preview groups should expose a visible item count",
+  );
 
   previewPaneApi.unregisterMetadataPreviewPane();
   assert.deepEqual(unregisteredSections, ["metadata-preview-section"]);
@@ -1257,6 +1269,7 @@ function createPreviewElement(ownerDocument, tagName) {
     ownerDocument,
     tagName,
     className: "",
+    attributes: {},
     dataset: {},
     children: [],
     textContent: "",
@@ -1265,6 +1278,9 @@ function createPreviewElement(ownerDocument, tagName) {
     },
     replaceChildren(...children) {
       this.children = [...children];
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
     },
     querySelector(selector) {
       if (!selector.startsWith(".")) {
