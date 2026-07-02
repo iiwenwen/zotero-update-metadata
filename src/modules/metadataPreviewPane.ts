@@ -27,14 +27,21 @@ type MetadataPreviewPaneState =
 type MetadataPreviewOverviewTone =
   "idle" | "loading" | "ready" | "skipped" | "error" | "unavailable";
 
-export function registerMetadataPreviewPane() {
+export function registerMetadataPreviewPane(): boolean {
   registerMetadataPreviewStyles();
 
   if (registeredSectionKey) {
-    return;
+    return true;
   }
 
-  const registered = Zotero.ItemPaneManager?.registerSection({
+  const itemPaneManager = Zotero.ItemPaneManager as
+    _ZoteroTypes.ItemPaneManager | undefined;
+  if (!itemPaneManager?.registerSection) {
+    logMetadataPreviewPane("Zotero ItemPaneManager is not available yet.");
+    return false;
+  }
+
+  const registered = itemPaneManager.registerSection({
     paneID: PANE_ID,
     pluginID: config.addonID,
     sidenav: {
@@ -56,13 +63,14 @@ export function registerMetadataPreviewPane() {
   });
 
   if (!registered) {
-    ztoolkit.log(
+    logMetadataPreviewPane(
       "Zotero item pane metadata preview section was not registered.",
     );
-    return;
+    return false;
   }
 
   registeredSectionKey = registered;
+  return true;
 }
 
 export function unregisterMetadataPreviewPane() {
@@ -145,6 +153,14 @@ function getStyleSheetService() {
   return (Components.classes as any)[
     "@mozilla.org/content/style-sheet-service;1"
   ].getService(Components.interfaces.nsIStyleSheetService);
+}
+
+function logMetadataPreviewPane(message: string, error?: unknown) {
+  try {
+    ztoolkit.log(message, error);
+  } catch {
+    // Logging is best-effort because startup can reach here before toolkit setup.
+  }
 }
 
 function initializeMetadataPreviewPane(props: SectionInitHookArgs) {
