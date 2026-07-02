@@ -125,11 +125,7 @@ type MainWindowWithPane = _ZoteroTypes.MainWindow & {
 
 export function getItemISBN(item: Pick<Zotero.Item, "getField"> | undefined) {
   const value = item?.getField("ISBN");
-  const text = cleanText(value).replace(/[^\dXx]/g, "");
-  if (/^\d{9}[\dXx]$/.test(text) || /^\d{13}$/.test(text)) {
-    return text.toUpperCase();
-  }
-  return "";
+  return normalizeISBN(value);
 }
 
 export function buildFallbackDoubanItem(doc: Document, url: string) {
@@ -1413,6 +1409,51 @@ export function formatMetadataPreviewValue(value: unknown) {
   return cleanText(value) || "(empty)";
 }
 
+function creatorsAreEquivalent(oldCreators: unknown[], newCreators: unknown[]) {
+  return (
+    JSON.stringify(oldCreators.map(normalizeCreatorForComparison)) ===
+    JSON.stringify(newCreators.map(normalizeCreatorForComparison))
+  );
+}
+
+function normalizeCreatorForComparison(creator: unknown) {
+  if (!creator || typeof creator !== "object") {
+    return {
+      creatorType: "",
+      name: cleanText(creator),
+    };
+  }
+
+  const creatorRecord = creator as Record<string, unknown>;
+  return {
+    creatorType: normalizeCreatorType(
+      creatorRecord.creatorType ?? creatorRecord.creatorTypeID,
+    ),
+    name:
+      cleanText(creatorRecord.name) ||
+      cleanText([creatorRecord.firstName, creatorRecord.lastName].join(" ")),
+  };
+}
+
+function normalizeCreatorType(value: unknown) {
+  const text = cleanText(value);
+  if (!text) {
+    return "";
+  }
+
+  const id = Number(text);
+  if (Number.isFinite(id)) {
+    try {
+      const name = (globalThis as any).Zotero?.CreatorTypes?.getName?.(id);
+      return cleanText(name) || text;
+    } catch {
+      return text;
+    }
+  }
+
+  return text;
+}
+
 function applySafeItemType(
   newItem: any,
   oldItem: Zotero.Item,
@@ -1458,7 +1499,7 @@ function applySafeCreators(
       typeof (oldItem as any).getCreators === "function"
         ? (oldItem as any).getCreators() || []
         : [];
-    if (JSON.stringify(oldCreators) === JSON.stringify(newItem.creators)) {
+    if (creatorsAreEquivalent(oldCreators, newItem.creators)) {
       result.skipped.push({
         field: "creators",
         reason: "skip unchanged creators",
@@ -1533,7 +1574,7 @@ function applySafeFields(
       continue;
     }
 
-    if (safeValue.value === oldValue) {
+    if (fieldValuesAreEquivalent(field, oldValue, safeValue.value)) {
       result.skipped.push({
         field,
         reason: "skip unchanged value",
@@ -1610,6 +1651,32 @@ function getSafeFieldValue(
     skip: false as const,
     value: newText,
   };
+}
+
+function fieldValuesAreEquivalent(
+  field: string,
+  oldValue: unknown,
+  newValue: unknown,
+) {
+  if (field === "ISBN") {
+    const oldISBN = normalizeISBN(oldValue);
+    const newISBN = normalizeISBN(newValue);
+    if (oldISBN && newISBN) {
+      return oldISBN === newISBN;
+    }
+  }
+
+  return cleanText(oldValue) === cleanText(newValue);
+}
+
+function normalizeISBN(value: unknown) {
+  const text = cleanText(value)
+    .replace(/[^\dXx]/g, "")
+    .toUpperCase();
+  if (/^\d{9}[\dX]$/.test(text) || /^\d{13}$/.test(text)) {
+    return text;
+  }
+  return "";
 }
 
 export function mergeExtra(oldExtra: unknown, newExtra: unknown) {
