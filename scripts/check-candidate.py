@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import zipfile
+from urllib.parse import unquote, urlsplit
 
 
 def check(dist: Path) -> dict:
@@ -14,7 +15,11 @@ def check(dist: Path) -> dict:
     assert len(packages) == 1, "候选目录必须恰好一个 XPI"
     package = packages[0]
     source = json.loads(Path("addon/manifest.json").read_text())
-    version = json.loads(Path("package.json").read_text())["version"]
+    package_meta = json.loads(Path("package.json").read_text())
+    version = package_meta["version"]
+    repository = package_meta["repository"]["url"].removesuffix(".git").removeprefix("git+").rstrip("/")
+    repo_url = urlsplit(repository)
+    assert repo_url.scheme == "https" and repo_url.netloc == "github.com", "发布仓库必须是明确的GitHub HTTPS地址"
     with zipfile.ZipFile(package) as archive:
         assert archive.testzip() is None, "XPI CRC 校验失败"
         names = archive.namelist()
@@ -29,6 +34,8 @@ def check(dist: Path) -> dict:
         assert zotero["id"] == source["applications"]["zotero"]["id"], "包身份不一致"
         assert zotero["strict_min_version"] == "10.0" and zotero["strict_max_version"] == "10.0.*", "兼容范围错误"
         assert zotero["update_url"].startswith("https://") and "{{" not in zotero["update_url"], "未解析更新地址"
+        update_name = "update-beta.json" if "-" in version else "update.json"
+        assert zotero["update_url"] == repository + "/releases/download/release/" + update_name, "插件自动更新地址与仓库／渠道不一致"
         prefs = archive.read("prefs.js").decode()
         ui = archive.read("content/preferences.xhtml").decode()
         assert "defaultChecked" not in prefs + ui, "无效偏好仍在包内"
@@ -49,7 +56,8 @@ def check(dist: Path) -> dict:
                 assert not re.search(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|(?:sk-proj-|ghp_)[A-Za-z0-9_-]{20,}", text), f"疑似密钥：{name}"
     sha256 = hashlib.sha256(package.read_bytes()).hexdigest()
     sha512 = "sha512:" + hashlib.sha512(package.read_bytes()).hexdigest()
-    for feed_name in ("update.json", "update-beta.json"):
+    feed_names = ["update-beta.json"] if "-" in version else ["update.json", "update-beta.json"]
+    for feed_name in feed_names:
         feed = json.loads((dist / feed_name).read_text())
         updates = feed["addons"][zotero["id"]]["updates"]
         entry = next(item for item in updates if item["version"] == version)
@@ -58,11 +66,15 @@ def check(dist: Path) -> dict:
         assert entry["applications"]["zotero"]["strict_max_version"] == zotero["strict_max_version"], "feed最高版本不一致"
         assert entry["update_link"].endswith("/" + package.name), "下载文件名不一致"
         assert "{{" not in entry["update_link"] and entry["update_link"].startswith("https://"), "未解析下载地址"
+        link = urlsplit(entry["update_link"])
+        assert link.scheme == "https" and link.netloc == repo_url.netloc and not link.query and not link.fragment, "候选下载地址无效"
+        assert unquote(link.path) == repo_url.path + "/releases/download/v" + version + "/" + package.name, "候选下载仓库／标签／文件名不一致"
     hashes = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for base in ("src", "addon") for p in sorted(Path(base).rglob("*")) if p.is_file()}
     return {
         "status": "local-candidate-checks-passed",
         "xpi": str(package.resolve()), "bytes": package.stat().st_size,
         "version": version, "id": zotero["id"], "sha256": sha256, "update_hash": sha512,
+        "update_feeds": feed_names,
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], text=True)),
         "runtime_files": names, "runtime_source_sha256": hashes,

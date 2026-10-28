@@ -14,8 +14,10 @@
     "test": "zotero-plugin test",
     "test:core": "node scripts/test-core.mjs",
     "check": "npm run build && bash specs/check.sh src/",
-    "release": "zotero-plugin release",
-    "test:ui": "node scripts/test-ui.mjs"
+    "release": "npm run release:prepare",
+    "test:ui": "node scripts/test-ui.mjs",
+    "release:prepare": "python3 scripts/prepare-release.py prepare",
+    "release:verify": "python3 scripts/prepare-release.py verify"
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",

@@ -127,7 +127,7 @@ npm run build
 | `npm run test:ui` | 运行离线界面与工作流测试 |
 | `npm run check` | 构建并检查基本安全规则 |
 
-开发配置、完整测试命令与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+开发配置、完整测试命令与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，安装包发布步骤见 [RELEASING.md](RELEASING.md)。
 
 ## 反馈与贡献
 
