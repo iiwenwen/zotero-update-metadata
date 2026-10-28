@@ -41,7 +41,7 @@ def release_notes(changelog, version, commit):
 
 
 def checked_name(name):
-    if not isinstance(name, str) or not name or name.startswith('.') or '/' in name or '\\' in name or any(ord(c) < 32 for c in name) or name in {MANIFEST, CHECKSUMS}:
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', name) or name in {MANIFEST, CHECKSUMS}:
         raise ValueError('候选文件名不合法')
     return name
 

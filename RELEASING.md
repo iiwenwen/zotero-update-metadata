@@ -36,13 +36,13 @@ flowchart LR
 - 发布job不安装npm依赖，只接收该次构建的固定资产，核对源码提交、版本、插件ID和摘要。
 - 标签只能指向该次提交；同名已发布版本不覆盖、不移动标签。失败时只保留草稿。
 - 已有草稿只补缺失资产，相同摘要可继续；不使用`--clobber`替换其他字节。失败请优先重跑失败job；源码改动则升新版本。
-- GitHub下载资产必须与候选相同，之后才公开。预发布标记由版本后缀决定，例如`0.4.1-beta.1`。
+- GitHub下载资产必须与候选相同，之后才公开。预发布标记由版本后缀决定，例如`0.4.1-beta.2`。
 
 工作流是`.github/workflows/ci.yml`和`release.yml`；统一发版脚本是`scripts/release.py`，固定包／验包复用`scripts/prepare-release.py`。Actions固定到已核对的完整commit SHA，不需要私人PAT或SSH密钥。
 
 ## 当前发布约定
 
-- 当前测试版本为`0.4.1-beta.1`，保留开发ID，公开为Pre-release，不设Latest。
+- 当前测试版本为`0.4.1-beta.2`，保留开发ID，公开为Pre-release，不设Latest。
 - 脚本不修改固定自动更新文件，也不触碰旧1.x插件的更新入口。
 - 旧版ID是`zotero-update-metadata@iiwenwen`，重写版是`zmta-update-metadata@local`，需手动安装，不能当作旧版的直接自动升级。
 - 正式公开版须先确定项目许可和正式插件身份；当前预发布仍需在测试库小范围试用，CI不替代真实Zotero界面／数据验收。

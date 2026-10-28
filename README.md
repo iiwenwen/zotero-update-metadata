@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Zotero-10-CC2936?style=flat-square" alt="支持 Zotero 10">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="使用 TypeScript">
-  <img src="https://img.shields.io/badge/版本-0.4.1--beta.1_测试版-orange?style=flat-square" alt="0.4.1-beta.1 测试版">
+  <img src="https://img.shields.io/badge/版本-0.4.1--beta.2_测试版-orange?style=flat-square" alt="0.4.1-beta.2 测试版">
   <img src="https://img.shields.io/badge/许可-待定-lightgrey?style=flat-square" alt="许可证尚未确定">
 </p>
 
@@ -53,7 +53,7 @@
 
 需要 **Zotero 10 桌面版**，目前主要在 macOS 上使用。
 
-> **当前测试版：[0.4.1-beta.1](https://github.com/iiwenwen/zotero-update-metadata/releases/tag/v0.4.1-beta.1)**。下载该版本下的 `.xpi`；旧 1.x 安装包属于此前的插件，不能代表当前代码。测试版保留开发身份，建议先在独立文库试用。
+> **当前测试版：[0.4.1-beta.2](https://github.com/iiwenwen/zotero-update-metadata/releases/tag/v0.4.1-beta.2)**。下载该版本下的 `.xpi`；旧 1.x 安装包属于此前的插件，不能代表当前代码。测试版保留开发身份，建议先在独立文库试用。
 
 1. 打开 Zotero，进入 **工具 → 插件**。
 2. 点齿轮菜单，选 **从文件安装插件**。

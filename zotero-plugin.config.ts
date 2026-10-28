@@ -11,6 +11,7 @@ export default defineConfig({
   source: ["src", "addon"],
   dist: ".scaffold/build",
   name: "Zotero 元数据更新",
+  xpiName: pkg.name,
   id: "zmta-update-metadata@local",
   namespace: "zmta",
   // 仅测试客户端接收；不把维护者机器路径写入源码或生产插件。

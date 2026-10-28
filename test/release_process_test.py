@@ -93,7 +93,7 @@ class ReleaseProcess(unittest.TestCase):
             release.verify(self.out)
 
     def test_symlink_and_path_escape_are_rejected(self):
-        for name in ['../plugin.xpi', '/plugin.xpi', 'x\\plugin.xpi', 'line\nbreak.xpi']:
+        for name in ['../plugin.xpi', '/plugin.xpi', 'x\\plugin.xpi', 'line\nbreak.xpi', 'zotero-元数据.xpi', 'plugin file.xpi']:
             with self.assertRaises(ValueError):
                 release.checked_name(name)
         self.freeze(self.fixture())
