@@ -48,7 +48,7 @@ python3 scripts/check-publication.py main
 
 该检查只读目标分支及其可达历史，不检查本地归档分支。它是隐私模式检查，不保证穷尽所有秘密。不得使用`git push --all`、`--mirror`或批量推送旧本地标签。发布前核实际仓库地址、许可、版本、源码提交、最终XPI和校验和；不能把服务拒绝、测试未执行或实显未验写成通过。
 
-版本正本为`package.json`；同步lock根版本和`addon/manifest.json`。本机如果另有`plugin.json`，版本检查仍核其一致性；公开clone不要求该文件。`npm run release`／`release:prepare`只做本地检查和固定候选，不提交、打标签、推送或公开Release。完整步骤见[RELEASING.md](RELEASING.md)，不要直接调用脚手架的release命令。
+版本正本为`package.json`；同步lock根版本和`addon/manifest.json`。本机如果另有`plugin.json`，版本检查仍核其一致性；公开clone不要求该文件。`npm run release`一键调度GitHub检查、打包和发布；`--draft`可只生成草稿。本地只检查用`npm run ci`，只准备候选用`release:prepare`。完整说明见[RELEASING.md](RELEASING.md)。
 
 项目许可尚未确定，不得把第三方依赖的许可证当作本项目许可证。
 

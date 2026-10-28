@@ -4,34 +4,37 @@
 
 <h1 align="center">Zotero 元数据更新</h1>
 
-<p align="center">重新获取条目信息，先看差异，再决定更新什么。</p>
+<p align="center">重新获取条目信息，先看差异，再决定改什么。</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Zotero-10-CC2936?style=flat-square" alt="支持 Zotero 10">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="使用 TypeScript">
-  <img src="https://img.shields.io/badge/版本-0.4.0_开发版-orange?style=flat-square" alt="0.4.0 开发版">
+  <img src="https://img.shields.io/badge/版本-0.4.1--beta.1_测试版-orange?style=flat-square" alt="0.4.1-beta.1 测试版">
+  <img src="https://img.shields.io/badge/许可-待定-lightgrey?style=flat-square" alt="许可证尚未确定">
 </p>
 
 <p align="center">
   <a href="#功能">功能</a> ·
-  <a href="#界面预览">界面预览</a> ·
+  <a href="#界面">界面</a> ·
   <a href="#安装">安装</a> ·
   <a href="#使用">使用</a> ·
-  <a href="#技术栈">技术栈</a> ·
-  <a href="#本地开发">本地开发</a>
+  <a href="#常见问题">FAQ</a> ·
+  <a href="#技术栈与依赖">技术栈</a> ·
+  <a href="#本地开发">本地开发</a> ·
+  <a href="#反馈与许可">反馈与许可</a>
 </p>
 
-导入 Zotero 的文献信息缺了字段，或想重新核对作者、出版信息？这个插件会根据条目已有的 **URL 或 DOI** 获取信息，把新旧内容放在一起供你比较。你勾选哪些内容，插件就更新哪些内容。
+用条目已有的 **URL 或 DOI** 重新查一次，把新拿到的信息和本地内容并排摆在一起。你勾哪一项，它才改哪一项；不勾的，原样留着。
 
 ## 功能
 
-- **对照后更新**：查看本地信息与新获取内容的差异，逐项选择，不同意的内容保留原样。
-- **单条与批量处理**：从条目侧栏快速操作，也可右键选择最多 50 个条目一起审核。
-- **作者名单整组审核**：作者、编辑、译者的名单和顺序一起确认。
-- **补充附件与笔记**：按需新增，保留已有内容；默认不勾选，减少意外添加。
-- **查看结果与撤销**：查看最近的更新结果，重试失败项，或在符合恢复条件时撤销最近一次更新。
+- **先对照，再更新**：新旧信息逐项列出，有分歧的字段默认不动，由你决定。
+- **单条顺手改，批量慢慢审**：侧栏可直接审核当前条目；右键最多选 50 个条目一起过。
+- **作者名单整组审核**：作者、编辑、译者按整组确认，不会只换名字却留下旧顺序。
+- **附件和笔记只增不改**：已有内容不碰，新增默认不勾选。
+- **结果可查、可重试、可撤销**：查看最近一次更新的结果，重试失败项，条件允许时撤销。
 
-## 界面预览
+## 界面
 
 截图来自 Zotero 10，使用演示条目。点击图片可查看大图。
 
@@ -48,65 +51,73 @@
 
 ## 安装
 
-需要 **Zotero 10 桌面版**。目前主要在 macOS 上测试，Windows 和 Linux 尚未充分验证。
+需要 **Zotero 10 桌面版**，目前主要在 macOS 上使用。
 
-> 当前主线是 **0.4.0 开发版**，尚未发布对应的 XPI 安装包。[Releases](https://github.com/iiwenwen/zotero-update-metadata/releases) 中现有安装包属于旧版。想试用当前版本，可先按[本地开发](#本地开发)中的步骤构建。
-
-拿到 `.xpi` 文件后：
+> **当前测试版：[0.4.1-beta.1](https://github.com/iiwenwen/zotero-update-metadata/releases/tag/v0.4.1-beta.1)**。下载该版本下的 `.xpi`；旧 1.x 安装包属于此前的插件，不能代表当前代码。测试版保留开发身份，建议先在独立文库试用。
 
 1. 打开 Zotero，进入 **工具 → 插件**。
-2. 点击齿轮菜单，选择 **从文件安装插件**。
-3. 选中 `.xpi` 文件，按提示完成安装。
+2. 点齿轮菜单，选 **从文件安装插件**。
+3. 选中 `.xpi`，按提示完成安装。
 
-首次使用前请备份文库，先用少量测试条目试用。
+装之前备份文库，先用少量条目试用——撤销不能代替备份。
 
 ## 使用
 
-1. 选中需要更新的书目条目。
-2. 右键选择 **元数据更新 → 审核并更新所选条目**；单条也可以点击侧栏里的 **审核此条目的更新**。
-3. 等待获取完成，对照新旧信息，勾选想采用的内容。
-4. 点击 **更新所选内容**，查看处理结果。取消审核不会修改条目。
+1. 选中要更新的书目条目。
+2. 右键选 **元数据更新 → 审核并更新所选条目**；单条也可点侧栏的 **审核此条目的更新**。
+3. 对照新旧信息，勾选你认可的内容。
+4. 点 **更新所选内容**，查看结果。取消审核不会修改条目。
 
-条目需要有可用的 URL 或 DOI。插件使用 Zotero 的网页抓取和标识符查询能力，能获取哪些信息取决于对应网站及 Zotero 的支持情况。豆瓣等网站可能限制访问，遇到拒绝访问时请勿连续重试。
+条目需要有可用的 URL 或 DOI，能否取到取决于目标网站和 Zotero 的支持；豆瓣等站点可能限流，被拒时别连着重试。
 
 ### 默认设置
 
-在 Zotero 设置中打开 **Zotero 元数据更新**：
-
 | 设置 | 默认 | 作用 |
 | --- | --- | --- |
-| 在条目侧栏显示元数据更新 | 开启 | 显示单条更新入口；关闭后仍可使用右键菜单 |
+| 在条目侧栏显示元数据更新 | 开启 | 显示单条入口；关闭后仍可用右键菜单 |
 | 默认勾选新增附件 | 关闭 | 下次审核时是否预选附件 |
 | 默认勾选新增笔记 | 关闭 | 下次审核时是否预选笔记 |
 
-### 更新与撤销要注意什么？
+改动只影响之后打开的审核窗口。
 
-- 已有字段出现不同值时，默认不替换，需要你主动勾选。
-- 作者名单按整组替换，确认前请检查成员和顺序。
-- 已有附件和笔记不会被修改或删除；新增内容不自动去重，请留意重复。
-- 撤销针对最近一次更新。后来手工改过的内容会保留并提示冲突，无法确认归属的新增内容也会保留。撤销不能代替备份。
+### 改动前注意
 
-## 技术栈
+- 已有字段有不同值时默认不替换，需你主动勾选。
+- 作者名单整组替换，确认前看一眼成员和顺序。
+- 已有附件和笔记不会被修改或删除；新增内容不去重，留意重复。
+- 撤销只针对最近一次更新，且只回退能确认归属的改动。
 
-插件使用 **TypeScript + Zotero 原生扩展 API** 开发，界面直接使用 Zotero 的控件。
+## 常见问题
 
-| 部分 | 使用的框架或工具 | 用途 |
+**为什么有差异的字段默认不勾选？** 本地值可能是你手改过的，插件不知道谁对，决定权留给你。
+
+**取不到信息怎么办？** 先确认条目有 URL 或有效 DOI；站点改版、限流或 Zotero 暂不支持都会失败。
+
+**会动已有的附件和笔记吗？** 不会，只允许新增，但不会自动去重。
+
+**支持 Zotero 7/8/9 或移动端吗？** 不支持，只针对 Zotero 10 桌面版。
+
+## 技术栈与依赖
+
+**技术栈**：TypeScript 直接调用 Zotero 原生扩展 API，界面用 XHTML/XUL + DOM API 复用 Zotero 控件，不引入前端框架；多语言用 Fluent（`.ftl`），构建打包用 zotero-plugin-scaffold + esbuild，测试用 Mocha + Chai。
+
+**用到的第三方仓库**（版本以 `package-lock.json` 为准）：
+
+| 仓库 | 版本 | 用途 |
 | --- | --- | --- |
-| 开发语言 | TypeScript | 插件逻辑与宿主接口调用 |
-| 界面 | XHTML / XUL、DOM API | 侧栏、设置页和审核窗口 |
-| 多语言 | Fluent（`.ftl`） | 中文与英文界面文案 |
-| 开发与构建 | [Zotero Plugin Scaffold](https://github.com/northword/zotero-plugin-scaffold) 0.8.8 | 开发服务、热重载、构建与 XPI 打包 |
-| 插件工具库 | [Zotero Plugin Toolkit](https://github.com/windingwind/zotero-plugin-toolkit) 5.2.0 | 对话框等插件开发辅助功能 |
-| JavaScript 打包 | [esbuild](https://github.com/evanw/esbuild) 0.28.2 | 编译并打包 TypeScript 源码 |
-| 类型定义 | [zotero-types](https://github.com/windingwind/zotero-types) 4.1.3 | Zotero API 类型支持 |
-| 自动测试 | [Mocha](https://github.com/mochajs/mocha) 11.8 / [Chai](https://github.com/chaijs/chai) 6.2 | 核心逻辑、界面与工作流回归 |
-| 开发环境 | Node.js 24、npm、Python 3.9+ | 依赖管理、构建与检查脚本 |
+| [zotero-plugin-toolkit](https://github.com/windingwind/zotero-plugin-toolkit) | 5.2.0 | 运行时工具库（对话框等），唯一随插件打包的第三方代码 |
+| [zotero-plugin-scaffold](https://github.com/northword/zotero-plugin-scaffold) | 0.8.8 | 开发服务、热重载、构建与 XPI 打包 |
+| [esbuild](https://github.com/evanw/esbuild) | 0.28.2 | 打包插件源码与测试 bundle |
+| [zotero-types](https://github.com/windingwind/zotero-types) | 4.1.3 | Zotero API 类型定义 |
+| [Mocha](https://github.com/mochajs/mocha) | 11.8.0 | 测试运行器 |
+| [Chai](https://github.com/chaijs/chai) | 6.2.2 | 断言库 |
+| [@types/mocha](https://github.com/DefinitelyTyped/DefinitelyTyped) / [@types/chai](https://github.com/DefinitelyTyped/DefinitelyTyped) | 10.0.10 / 5.2.3 | 类型声明 |
 
-表中依赖版本对应当前锁文件，后续以 `package-lock.json` 为准。
+间接依赖与许可见 [package-lock.json](package-lock.json) 和[第三方说明](addon/content/third-party-notices.txt)。
 
 ## 本地开发
 
-先安装 Node.js 24、Git；运行检查脚本还需要 Python 3.9+。
+需要 Node.js 24、Git；检查脚本还需要 Python 3.9+。
 
 ```bash
 git clone https://github.com/iiwenwen/zotero-update-metadata.git
@@ -115,28 +126,22 @@ npm ci
 npm run build
 ```
 
-构建完成后，在 `.scaffold/build/` 中找到 `.xpi` 文件，即可安装到 Zotero。
-
-常用命令：
+构建产物在 `.scaffold/build/`，生成的 `.xpi` 可直接装进 Zotero。
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm start` | 启动开发服务，默认模拟获取结果，需要本地 Zotero 环境配置 |
+| `npm start` | 开发服务，默认模拟获取结果，需要本地 Zotero 环境配置 |
 | `npm run start:live` | 使用真实来源获取信息 |
-| `npm run test:core` | 运行离线核心测试 |
-| `npm run test:ui` | 运行离线界面与工作流测试 |
+| `npm run test:core` | 离线核心测试 |
+| `npm run test:ui` | 离线界面与工作流测试 |
 | `npm run check` | 构建并检查基本安全规则 |
 
-开发配置、完整测试命令与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，安装包发布步骤见 [RELEASING.md](RELEASING.md)。
+开发配置与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，维护者推送源码后运行 `npm run release` 即可发版，详见 [RELEASING.md](RELEASING.md)。
 
-## 反馈与贡献
+## 反馈与许可
 
-欢迎通过 [Issues](https://github.com/iiwenwen/zotero-update-metadata/issues) 报告问题或提出建议。请附上 Zotero 版本、插件版本、操作步骤和报错截图，并遮盖私人信息；不要上传整库或完整更新日志。
+问题或建议请开 [Issue](https://github.com/iiwenwen/zotero-update-metadata/issues)，附上 Zotero 版本、插件版本、操作步骤和报错截图，并遮盖私人信息；不要上传整库数据或完整更新日志。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
-版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+插件不带遥测，也不上传文库；查询时会向目标网站发送 URL、DOI 等必要信息，更新日志存在本地，可能含文献信息，请自行保管。
 
-## 隐私与许可
-
-插件不提供遥测或自动上传文库的服务。查询时会向对应网站发送 URL、DOI 等必要信息；更新日志保存在本地，可能含文献信息，请妥善保管。
-
-本重写版的项目许可证尚未确定。第三方依赖的许可见[第三方说明](addon/content/third-party-notices.txt)。
+**许可证**：本重写版的项目许可尚未确定，确定后补上 `LICENSE`。

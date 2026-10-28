@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -42,6 +43,15 @@ class ReleaseProcess(unittest.TestCase):
 
     def freeze(self, candidate):
         return release.freeze(self.out, candidate, 'a' * 40, 'b' * 40, f'## {candidate["version"]}\n\n- A user-visible change.\n', False)
+
+    def test_github_output_is_relative_and_rejects_newlines(self):
+        output = self.root / "output"
+        with patch.object(release, "ROOT", self.root), patch.dict(os.environ, {"GITHUB_OUTPUT": str(output)}):
+            release.github_output(self.root / "candidate")
+            self.assertEqual(output.read_text(), "directory=candidate\n")
+            with self.assertRaises(ValueError):
+                release.github_output(self.root / "bad\npath")
+            self.assertEqual(output.read_text(), "directory=candidate\n")
 
     def test_stable_freezes_same_bytes_and_two_feeds(self):
         candidate = self.fixture()

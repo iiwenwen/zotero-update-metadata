@@ -117,7 +117,7 @@ def check(ref='main', index=False):
         for offset in range(0, len(commits) - 3, 4):
             oid, author, committer, message = commits[offset:offset + 4]
             for email in (author, committer):
-                if not re.fullmatch(r'[^\s@]+@users\.noreply\.github\.com', email):
+                if email != 'noreply@github.com' and not re.fullmatch(r'[^\s@]+@users\.noreply\.github\.com', email):
                     issues.append(f'commit {oid.strip()[:12]}: non-GitHub-private-email')
             issues.extend(text_issues(message.encode(), f'commit {oid.strip()[:12]}'))
     return sorted(set(issues)), len(files)

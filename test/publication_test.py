@@ -93,6 +93,11 @@ class PublicationBoundary(unittest.TestCase):
         self.assertIn('non-GitHub-private-email', result.stdout)
         self.assertNotIn(email, result.stdout)
 
+    def test_github_generated_merge_committer_is_allowed(self):
+        self.git("config", "user.email", "noreply@github.com")
+        self.commit("README.md", "public")
+        self.assertEqual(self.scan("main").returncode, 0)
+
     def test_unreadable_ref_fails_closed(self):
         self.assertEqual(self.scan('missing').returncode, 2)
 

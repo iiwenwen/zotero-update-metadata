@@ -1,0 +1,20 @@
+name: Setup build tools
+description: Node.js、Python及锁定依赖，仅供只读构建job使用
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version-file: .nvmrc
+        package-manager-cache: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Public Git dependencies over HTTPS
+      shell: bash
+      run: |
+        git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/
+        git config --global --add url."https://github.com/".insteadOf git@github.com:
+    - name: Install locked dependencies
+      shell: bash
+      run: npm ci --no-audit --no-fund

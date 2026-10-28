@@ -5,6 +5,7 @@ from datetime import datetime
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -146,7 +147,7 @@ def verify(directory):
     return info
 
 
-def prepare():
+def check_source():
     if git('status', '--porcelain'):
         raise ValueError('先提交待发布的代码和版本说明；工作区必须干净')
     commit = git('rev-parse', 'HEAD')
@@ -170,6 +171,11 @@ def prepare():
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
     candidate = checker.check(ROOT / '.scaffold/build')
+    return commit, tree, candidate
+
+
+def prepare():
+    commit, tree, candidate = check_source()
     directory = ROOT / '_build' / datetime.now().strftime('%Y%m%d-%H%M%S')
     directory.parent.mkdir(exist_ok=True)
     info = freeze(directory, candidate, commit, tree, (ROOT / 'CHANGELOG.md').read_text(), (ROOT / 'LICENSE').is_file())
@@ -181,12 +187,25 @@ def prepare():
     print('尚未创建标签、推送或发布Release。下一步见RELEASING.md。')
     if info['developmentID'] or not info['licenseFilePresent']:
         print('当前仍含开发ID或未确定项目许可；正式发布前须处理。')
+    return directory, info
+
+
+def github_output(directory):
+    output = os.environ.get('GITHUB_OUTPUT')
+    if not output:
+        raise ValueError('缺少GITHUB_OUTPUT')
+    relative = directory.relative_to(ROOT).as_posix()
+    if '\n' in relative or '\r' in relative:
+        raise ValueError('候选目录不能包含换行')
+    with open(output, 'a') as stream:
+        stream.write(f'directory={relative}\n')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'verify'], nargs='?', default='prepare')
+    parser.add_argument('command', choices=['check', 'prepare', 'verify'], nargs='?', default='prepare')
     parser.add_argument('directory', nargs='?', type=Path)
+    parser.add_argument('--github-output', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'verify':
@@ -196,8 +215,13 @@ def main():
             print(f'固定候选校验通过：{info["version"]}，源码{info["sourceCommit"][:12]}')
         elif args.directory is not None:
             parser.error('prepare不接受目录参数')
+        elif args.command == 'check':
+            check_source()
+            print('CI检查与生产构建通过。')
         else:
-            prepare()
+            directory, _ = prepare()
+            if args.github_output:
+                github_output(directory)
         return 0
     except (AssertionError, OSError, ValueError, TypeError, KeyError, StopIteration, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
         print(f'Release准备／校验失败：{error}', file=sys.stderr)
