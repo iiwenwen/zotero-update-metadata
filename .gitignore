@@ -32,7 +32,11 @@ skills/
 notes/
 vault/
 resources/
-docs/
+docs/*
+!docs/images/
+docs/images/*
+!docs/images/item-pane.jpg
+!docs/images/preferences.jpg
 
 # 公开构建保留两份安全检查资产，其余本地规范单独保留
 specs/*

@@ -72,6 +72,18 @@ class PublicationBoundary(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('historical-private-workspace-path', result.stdout)
 
+    def test_readme_images_exception_does_not_allow_internal_docs(self):
+        # 验证路径授权范围，内容仅为普通文本夹具，不充当图片格式测试。
+        self.commit('docs/images/item-pane.jpg', 'public fixture')
+        self.commit('docs/images/preferences.jpg', 'public fixture')
+        self.assertEqual(self.scan('main').returncode, 0)
+        self.commit('docs/images/private.jpg', 'private fixture')
+        self.commit('docs/reviews/internal.md', 'private fixture')
+        result = self.scan('main')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('docs/images/private.jpg: private-workspace-path', result.stdout)
+        self.assertIn('docs/reviews/internal.md: private-workspace-path', result.stdout)
+
     def test_non_private_commit_email_is_rejected_without_echo(self):
         email = 'private-address@example.invalid'
         self.git('config', 'user.email', email)

@@ -11,6 +11,7 @@ PRIVATE_ROOTS = {
     'vault', 'resources', 'docs', '_tmp', '_build', '_archive', '.scaffold', 'node_modules',
 }
 PRIVATE_FILES = {'AGENTS.md', 'CLAUDE.md', 'plugin.json', '42plugin.json'}
+PUBLIC_DOC_ASSETS = {'docs/images/item-pane.jpg', 'docs/images/preferences.jpg'}
 PATTERNS = {
     'personal-home-path': re.compile(r'(?:/Users|/home)/[A-Za-z0-9._-]+(?:/|$)|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+'),
     'private-key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'),
@@ -27,7 +28,7 @@ def path_issue(path):
     parts = PurePosixPath(path).parts
     if not parts or '..' in parts or path.startswith('/'):
         return 'unsafe-path'
-    if parts[0] in PRIVATE_ROOTS or path in PRIVATE_FILES:
+    if (parts[0] in PRIVATE_ROOTS and path not in PUBLIC_DOC_ASSETS) or path in PRIVATE_FILES:
         return 'private-workspace-path'
     if any(p.startswith('.env') and p != '.env.example' for p in parts):
         return 'environment-values-file'

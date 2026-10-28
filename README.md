@@ -1,52 +1,142 @@
-# Zotero 元数据更新
+<p align="center">
+  <img src="addon/content/icons/favicon.png" width="88" alt="Zotero 元数据更新图标">
+</p>
 
-![插件图标](addon/content/icons/favicon.png)
+<h1 align="center">Zotero 元数据更新</h1>
 
-根据条目已有的URL或DOI，调用Zotero Translator获取一份完整元数据，与本地逐项比较；由你确认后更新，并保留本地批次日志。
+<p align="center">重新获取条目信息，先看差异，再决定更新什么。</p>
 
-## 状态与安装
+<p align="center">
+  <img src="https://img.shields.io/badge/Zotero-10-CC2936?style=flat-square" alt="支持 Zotero 10">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="使用 TypeScript">
+  <img src="https://img.shields.io/badge/版本-0.4.0_开发版-orange?style=flat-square" alt="0.4.0 开发版">
+</p>
 
-当前为 **0.4.0本地内测版**，支持 **Zotero 10.0.* 桌面版**，使用开发身份`zmta-update-metadata@local`。当前实际宿主验证环境是macOS／Zotero 10.0.6，不将结果外推到其他系统或全部上游。中文界面完整，英文尚未全部覆盖。
+<p align="center">
+  <a href="#功能">功能</a> ·
+  <a href="#界面预览">界面预览</a> ·
+  <a href="#安装">安装</a> ·
+  <a href="#使用">使用</a> ·
+  <a href="#技术栈">技术栈</a> ·
+  <a href="#本地开发">本地开发</a>
+</p>
 
-源码正在整理为可公开维护的仓库。项目许可暂未确定，尚未提供本重写版的公开下载或已验证自动更新渠道；不能将第三方依赖许可视为本项目许可证。同名GitHub仓库的旧实现具有自己的历史和许可，本地重写版尚未与其合并。
+导入 Zotero 的文献信息缺了字段，或想重新核对作者、出版信息？这个插件会根据条目已有的 **URL 或 DOI** 获取信息，把新旧内容放在一起供你比较。你勾选哪些内容，插件就更新哪些内容。
 
-收到维护者提供的XPI后，在Zotero **工具 → 插件**的齿轮菜单选择“从文件安装插件”，按提示操作。先备份，首次使用请在独立测试库用少量条目验证。同ID才是升级，改变ID会被视为另一款插件。
+## 功能
 
-## 一次更新
+- **对照后更新**：查看本地信息与新获取内容的差异，逐项选择，不同意的内容保留原样。
+- **单条与批量处理**：从条目侧栏快速操作，也可右键选择最多 50 个条目一起审核。
+- **作者名单整组审核**：作者、编辑、译者的名单和顺序一起确认。
+- **补充附件与笔记**：按需新增，保留已有内容；默认不勾选，减少意外添加。
+- **查看结果与撤销**：查看最近的更新结果，重试失败项，或在符合恢复条件时撤销最近一次更新。
 
-1. 选中1–50个普通书目条目；附件、笔记和批注不能单独作为更新对象。
-2. 右键进入 **元数据更新 → 审核并更新所选条目**；单条也可从条目信息中的“元数据更新”侧栏进入。
-3. 预检依次获取候选；取消会协作停止，当前Translator结束后退出，不进入写入。
-4. 审核本地现值和候选值。已有值冲突默认不选，本地缺失值可预选；作者名单按完整有序列表整体审核。附件与笔记默认不预选，候选仍完整显示，可逐项勾选。
-5. 明确确认后执行，再查看每项结果。取消审核不更新条目；严重失败或需人工恢复时，请保留日志并停止重复操作。
+## 界面预览
 
-设置仅三项：侧栏显示、附件预选、笔记预选，默认开／关／关。初选设置只影响下一次打开的审核窗口；恢复默认仅重置三项，不清日志或改条目。普通设置已移除技术详情开关，升级保留旧隐藏偏好值。
+截图来自 Zotero 10，使用演示条目。点击图片可查看大图。
 
-有效URL优先使用Web Translator；获取型失败才尝试DOI Search。对象、类型或版本冲突直接阻断，不靠换源掩盖。对单个有有效DOI的条目，可选择 **改用DOI获取当前条目**；不跨候选拼接字段。
+<table>
+  <tr>
+    <th>条目侧栏</th>
+    <th>插件设置</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="docs/images/item-pane.jpg"><img src="docs/images/item-pane.jpg" width="420" alt="条目侧栏中的审核更新、查看批次状态和设置按钮"></a></td>
+    <td valign="top"><a href="docs/images/preferences.jpg"><img src="docs/images/preferences.jpg" width="420" alt="插件设置：显示侧栏、默认勾选新增附件、默认勾选新增笔记"></a></td>
+  </tr>
+</table>
 
-## 数据保护与恢复
+## 安装
 
-- 普通字段只更新明确确认项，写前复核身份和本地现值，保留无法归属的人工后改。
-- 作者、编辑、译者等名单整体替换，不逐人拼接或自动整理姓名；空候选不清空本地名单。
-- 附件与笔记仅新增，不修改、替换或删除已有内容；不自动判重，可能重复，确认前请检查。
-- 不更新条目类型、标签或Extra，不创建新书目条目，不生成摘要或笔记内容。
+需要 **Zotero 10 桌面版**。目前主要在 macOS 上测试，Windows 和 Linux 尚未充分验证。
 
-**查看批次状态**可检查未完成批次和最近一次终态记录，未完成记录不代表可自动续跑。**重试最近批次中的失败项**仅重试本会话原授权中内容一致的失败操作，不重放成功项；预检失败请重新审核。
+> 当前主线是 **0.4.0 开发版**，尚未发布对应的 XPI 安装包。[Releases](https://github.com/iiwenwen/zotero-update-metadata/releases) 中现有安装包属于旧版。想试用当前版本，可先按[本地开发](#本地开发)中的步骤构建。
 
-**撤销最近一次批量更新**仅处理最新可撤销批次，字段／作者后来被人工修改时保留并报告冲突。本批新增子项只有身份、归属和创建后状态均可证明未变时才移入回收站；编辑过、归属不明或旧日志缺证明的子项保留。撤销不是完整备份。
+拿到 `.xpi` 文件后：
 
-菜单灰色可能表示没有有效选择、失败项或可撤销记录。卸载插件不等于撤销更新；当前实现不主动清理批次日志。
+1. 打开 Zotero，进入 **工具 → 插件**。
+2. 点击齿轮菜单，选择 **从文件安装插件**。
+3. 选中 `.xpi` 文件，按提示完成安装。
 
-## 上游限制与隐私
+首次使用前请备份文库，先用少量测试条目试用。
 
-豆瓣可能被风控拒绝；插件不绕过登录、验证码或访问限制，不保证所有来源都有结果。编排层对HTTP 401／403不自动重试，429停止该批后续同host请求并尽量显示等待时间；网络错误／超时最多尝试两次。Translator内部行为仍由Zotero及对应Translator决定。
+## 使用
 
-日志位于Zotero数据目录的`zmta-update-metadata/batch-journal.json`，包含来源URL、字段／作者变更、子项状态摘要及操作结果，可能含私人信息。笔记操作只记摘要标识，不保存正文。日志仅本地保存，插件不自动上传，没有自建遥测服务。
+1. 选中需要更新的书目条目。
+2. 右键选择 **元数据更新 → 审核并更新所选条目**；单条也可以点击侧栏里的 **审核此条目的更新**。
+3. 等待获取完成，对照新旧信息，勾选想采用的内容。
+4. 点击 **更新所选内容**，查看处理结果。取消审核不会修改条目。
 
-访问上游会按Translator行为发送URL、DOI等查询信息。报告问题请提供版本、步骤、失败提示和必要去敏日志，不上传整库、完整journal、含认证参数的URL或无关书目数据。
+条目需要有可用的 URL 或 DOI。插件使用 Zotero 的网页抓取和标识符查询能力，能获取哪些信息取决于对应网站及 Zotero 的支持情况。豆瓣等网站可能限制访问，遇到拒绝访问时请勿连续重试。
 
-## 开发与验证边界
+### 默认设置
 
-开发入口、隔离宿主及固定安全规则见[CONTRIBUTING.md](CONTRIBUTING.md)，版本变化见[CHANGELOG.md](CHANGELOG.md)，第三方运行依赖许可见[第三方说明](addon/content/third-party-notices.txt)。
+在 Zotero 设置中打开 **Zotero 元数据更新**：
 
-当前已有核心、UI／工作流、部分真实API数据保护及保留窗口热升级重点验证。完整键盘、窄面板、深色、多主窗口、批次状态实显、完整重启偏好持久化及改为可移植路径后的宿主检查仍未完成。Codex交叉审查无确证问题，第二谱系服务因额度限制没有返回正文；这些边界不因公开源码而自动消失。
+| 设置 | 默认 | 作用 |
+| --- | --- | --- |
+| 在条目侧栏显示元数据更新 | 开启 | 显示单条更新入口；关闭后仍可使用右键菜单 |
+| 默认勾选新增附件 | 关闭 | 下次审核时是否预选附件 |
+| 默认勾选新增笔记 | 关闭 | 下次审核时是否预选笔记 |
+
+### 更新与撤销要注意什么？
+
+- 已有字段出现不同值时，默认不替换，需要你主动勾选。
+- 作者名单按整组替换，确认前请检查成员和顺序。
+- 已有附件和笔记不会被修改或删除；新增内容不自动去重，请留意重复。
+- 撤销针对最近一次更新。后来手工改过的内容会保留并提示冲突，无法确认归属的新增内容也会保留。撤销不能代替备份。
+
+## 技术栈
+
+插件使用 **TypeScript + Zotero 原生扩展 API** 开发，界面直接使用 Zotero 的控件。
+
+| 部分 | 使用的框架或工具 | 用途 |
+| --- | --- | --- |
+| 开发语言 | TypeScript | 插件逻辑与宿主接口调用 |
+| 界面 | XHTML / XUL、DOM API | 侧栏、设置页和审核窗口 |
+| 多语言 | Fluent（`.ftl`） | 中文与英文界面文案 |
+| 开发与构建 | [Zotero Plugin Scaffold](https://github.com/northword/zotero-plugin-scaffold) 0.8.8 | 开发服务、热重载、构建与 XPI 打包 |
+| 插件工具库 | [Zotero Plugin Toolkit](https://github.com/windingwind/zotero-plugin-toolkit) 5.2.0 | 对话框等插件开发辅助功能 |
+| JavaScript 打包 | [esbuild](https://github.com/evanw/esbuild) 0.28.2 | 编译并打包 TypeScript 源码 |
+| 类型定义 | [zotero-types](https://github.com/windingwind/zotero-types) 4.1.3 | Zotero API 类型支持 |
+| 自动测试 | [Mocha](https://github.com/mochajs/mocha) 11.8 / [Chai](https://github.com/chaijs/chai) 6.2 | 核心逻辑、界面与工作流回归 |
+| 开发环境 | Node.js 24、npm、Python 3.9+ | 依赖管理、构建与检查脚本 |
+
+表中依赖版本对应当前锁文件，后续以 `package-lock.json` 为准。
+
+## 本地开发
+
+先安装 Node.js 24、Git；运行检查脚本还需要 Python 3.9+。
+
+```bash
+git clone https://github.com/iiwenwen/zotero-update-metadata.git
+cd zotero-update-metadata
+npm ci
+npm run build
+```
+
+构建完成后，在 `.scaffold/build/` 中找到 `.xpi` 文件，即可安装到 Zotero。
+
+常用命令：
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm start` | 启动开发服务，默认模拟获取结果，需要本地 Zotero 环境配置 |
+| `npm run start:live` | 使用真实来源获取信息 |
+| `npm run test:core` | 运行离线核心测试 |
+| `npm run test:ui` | 运行离线界面与工作流测试 |
+| `npm run check` | 构建并检查基本安全规则 |
+
+开发配置、完整测试命令与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 反馈与贡献
+
+欢迎通过 [Issues](https://github.com/iiwenwen/zotero-update-metadata/issues) 报告问题或提出建议。请附上 Zotero 版本、插件版本、操作步骤和报错截图，并遮盖私人信息；不要上传整库或完整更新日志。
+
+版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 隐私与许可
+
+插件不提供遥测或自动上传文库的服务。查询时会向对应网站发送 URL、DOI 等必要信息；更新日志保存在本地，可能含文献信息，请妥善保管。
+
+本重写版的项目许可证尚未确定。第三方依赖的许可见[第三方说明](addon/content/third-party-notices.txt)。
