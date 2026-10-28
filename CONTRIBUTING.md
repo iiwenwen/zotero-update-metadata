@@ -1,0 +1,53 @@
+# 开发与验证
+
+源码在`src/`，插件资产在`addon/`。公开构建、测试和安全规则均在本仓库，不需要维护者的个人AI配置。
+
+## 准备
+
+使用`.nvmrc`指定的Node.js版本。安装锁定依赖：
+
+```sh
+npm ci
+npm run test:core
+npm run test:ui
+python3 scripts/check-manifests.py
+python3 -m unittest discover -s test -p '*_test.py'
+npm run check
+python3 scripts/check-candidate.py
+```
+
+`test:core`和`test:ui`使用假宿主与内存夹具，不启动Zotero或访问真实上游。真实宿主用例不会混入离线通过数量。`check`构建生产包并运行安全字面检查，产物位于`.scaffold/build/`；检查器不验证远程下载地址。
+
+## 宿主验证
+
+安装Zotero 10，按scaffold要求在本地环境配置可执行文件路径；凭据和本机路径只写`.env`等忽略文件。`npm start`启动隔离开发客户端，默认离线Mock；`npm run start:live`才会访问真实上游。不得同时运行第二个本项目测试客户端。
+
+`npm test`会启动宿主测试，先关闭或有序切换已有测试客户端。测试运行器把当前项目根注入仅测试使用的偏好；真实宿主用例在任何交互前严格核对profile和dataDir均属于本项目的`.scaffold/test/`。缺失或不匹配即拒绝，不允许靠删除断言让测试通过。迁移路径后仍需在实际隔离宿主中验收。
+
+## 必须保留的数据保护
+
+- Provider／Translator只产候选与来源依据；预检、审核、取消阶段不得写字段、下载附件或创建笔记。
+- 每项更新必须经审核、身份确认及最终明确确认；已有非空字段和已有作者名单替换默认不选，作者按完整有序名单整体审核。
+- 附件／笔记仅新增，不修改、替换或删除原有内容；默认不预选，不自动判重。
+- 所有产品写入走既有计划、Executor／MutationPort和journal；写前复核身份与本地值，不静默覆盖人工后改。
+- 重试只处理原授权中的失败操作，不重放成功项；回退仅处理最近可撤销批次，人工后改或归属不明时保留并报告。
+- 真库默认禁止写入；专用测试库的真实写入须取得明确授权，合成夹具按归属清理。UI以唯一隔离客户端实际显示为准。
+- `specs/check.sh`及`specs/negatives.md`是字面护栏，不能代替上述行为验证。
+
+## 提交和发布
+
+提交前查看diff，运行受影响检查；避免反复全量review。提交标题使用Conventional Commits，不自动提交、推送或发布。本项目公开提交默认使用自己的GitHub隐私邮箱（当前公开检查器仅放行该邮箱格式），不写个人home路径、凭据、文库数据或完整journal。
+
+日常仅维护一份产品源码；维护者本地技能、状态板及研究资料由忽略规则排除。换机时本地工作流需从私人备份恢复，公开clone只需能独立构建和验证插件。
+
+首次推送前以及后续发布前运行：
+
+```sh
+python3 scripts/check-publication.py main
+```
+
+该检查只读目标分支及其可达历史，不检查本地归档分支。它是隐私模式检查，不保证穷尽所有秘密。不得使用`git push --all`、`--mirror`或批量推送旧本地标签。发布前核实际仓库地址、许可、版本、源码提交、最终XPI和校验和；不能把服务拒绝、测试未执行或实显未验写成通过。
+
+版本正本为`package.json`；同步lock根版本和`addon/manifest.json`。本机如果另有`plugin.json`，版本检查仍核其一致性；公开clone不要求该文件。`npm run release`有提交、tag、推送和上传副作用，仅在明确授权发版时使用。
+
+项目许可尚未确定，不得把第三方依赖的许可证当作本项目许可证。

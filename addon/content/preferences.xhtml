@@ -1,0 +1,28 @@
+<linkset>
+  <html:link rel="localization" href="zmta-preferences.ftl" />
+</linkset>
+<vbox class="main-section" onload="Zotero.zmtaAddon.hooks.onPrefsEvent('load', { window })">
+  <html:p data-l10n-id="pref-protection-summary" style="line-height: 1.6; margin-block: 8px 16px;"></html:p>
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-display-heading"></html:h2></label>
+    <checkbox id="zotero-prefpane-zmta-showItemPane"
+      preference="extensions.zmta.showItemPane" data-l10n-id="pref-showItemPane"
+      aria-describedby="zmta-pref-pane-description" />
+    <description id="zmta-pref-pane-description" data-l10n-id="pref-pane-description" />
+  </groupbox>
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-selection-heading"></html:h2></label>
+    <description id="zmta-pref-selection-description" data-l10n-id="pref-selection-description" />
+    <checkbox id="zotero-prefpane-zmta-defaultSelectAttachments"
+      preference="extensions.zmta.defaultSelectAttachments" data-l10n-id="pref-defaultSelectAttachments"
+      aria-describedby="zmta-pref-selection-description zmta-pref-additions-description" />
+    <checkbox id="zotero-prefpane-zmta-defaultSelectNotes"
+      preference="extensions.zmta.defaultSelectNotes" data-l10n-id="pref-defaultSelectNotes"
+      aria-describedby="zmta-pref-selection-description zmta-pref-additions-description" />
+    <description id="zmta-pref-additions-description" data-l10n-id="pref-additions-description" />
+  </groupbox>
+  <hbox pack="end">
+    <button data-l10n-id="pref-restore-defaults"
+      oncommand="Zotero.zmtaAddon.hooks.onPrefsEvent('reset', { window })" />
+  </hbox>
+</vbox>

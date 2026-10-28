@@ -1,0 +1,32 @@
+{
+  "name": "zotero-update-metadata",
+  "version": "0.4.0",
+  "description": "Zotero 插件：按已有 URL 或唯一标识符审核并更新条目元数据，全程留痕",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iiwenwen/zotero-update-metadata.git"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "zotero-plugin build",
+    "start": "zotero-plugin serve",
+    "start:live": "ZMTA_LIVE_UPSTREAM=1 zotero-plugin serve",
+    "test": "zotero-plugin test",
+    "test:core": "node scripts/test-core.mjs",
+    "check": "npm run build && bash specs/check.sh src/",
+    "release": "zotero-plugin release",
+    "test:ui": "node scripts/test-ui.mjs"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "chai": "^6.2.2",
+    "mocha": "^11.8.0",
+    "zotero-plugin-scaffold": "0.8.8",
+    "zotero-types": "4.1.3"
+  },
+  "dependencies": {
+    "zotero-plugin-toolkit": "^5.2.0"
+  },
+  "private": true
+}
