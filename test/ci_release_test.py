@@ -31,8 +31,9 @@ class CIRelease(unittest.TestCase):
         self.info = {'sourceCommit': COMMIT, 'sourceTree': TREE, 'version': '0.4.1-beta.1', 'tag': 'v0.4.1-beta.1', 'addonID': 'test@local', 'prereleaseVersion': True, 'developmentID': True, 'licenseFilePresent': False}
         self.env = {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_REF': 'refs/heads/main', 'GITHUB_REPOSITORY': r.REPO, 'GITHUB_SHA': COMMIT, 'RELEASE_PUBLISH': 'true', 'GITHUB_STEP_SUMMARY': ''}
         self.events = []
+        self.download_error = None
         self.existing = None
-        self.remote = {'id': 1, 'tag_name': self.info['tag'], 'assets': [], 'draft': True, 'html_url': 'https://github.com/example/release'}
+        self.remote = {'id': 1, 'tag_name': self.info['tag'], 'assets': [], 'draft': True, 'prerelease': True, 'html_url': 'https://github.com/example/release'}
 
     def tearDown(self):
         self.temp.cleanup()
@@ -48,8 +49,19 @@ class CIRelease(unittest.TestCase):
         return None
 
     def publish(self):
-        with patch.object(r, 'ROOT', self.root), patch.dict(os.environ, self.env), patch.object(r.candidate, 'verify', return_value=self.info), patch.object(r, 'git', side_effect=lambda *args: TREE if 'HEAD^{tree}' in args else COMMIT), patch.object(r, 'api', side_effect=self.api), patch.object(r, 'gh', side_effect=lambda *args: self.events.append(('gh', args, None))), patch.object(r, 'download_and_verify', side_effect=lambda *_: self.events.append(('download', None, None))):
+        def download(*_):
+            self.events.append(('download', None, None))
+            if self.download_error:
+                raise self.download_error
+        with patch.object(r, 'ROOT', self.root), patch.dict(os.environ, self.env), patch.object(r.candidate, 'verify', return_value=self.info), patch.object(r, 'git', side_effect=lambda *args: TREE if 'HEAD^{tree}' in args else COMMIT), patch.object(r, 'api', side_effect=self.api), patch.object(r, 'gh', side_effect=lambda *args: self.events.append(('gh', args, None))), patch.object(r, 'download_and_verify', side_effect=download):
             return r.publish_artifacts(self.directory)
+
+    def test_public_release_replay_rejects_different_bytes_without_mutation(self):
+        self.existing = dict(self.remote, draft=False)
+        self.download_error = ValueError('GitHub下载资产与本次候选不一致')
+        with self.assertRaisesRegex(ValueError, '不一致'):
+            self.publish()
+        self.assertFalse(any(e[0] in {'POST', 'PATCH', 'gh'} for e in self.events))
 
     def test_beta_can_publish_but_stable_with_development_id_cannot(self):
         self.assertTrue(r.validate_binding(self.info, COMMIT, TREE, '0.4.1-beta.1', 'test@local', False, True))
@@ -69,6 +81,8 @@ class CIRelease(unittest.TestCase):
     def test_download_check_precedes_publish_and_latest_stays_false(self):
         result = self.publish()
         self.assertFalse(result['draft'])
+        created = next(e for e in self.events if e[0] == 'POST' and e[1].endswith('/releases'))
+        self.assertEqual(created[2]['name'], self.info['tag'])
         download = next(i for i, e in enumerate(self.events) if e[0] == 'download')
         published = next(i for i, e in enumerate(self.events) if e[0] == 'PATCH')
         self.assertLess(download, published)
@@ -99,7 +113,8 @@ class CIRelease(unittest.TestCase):
         self.assertTrue(self.publish()['draft'])
         self.assertFalse(any(e[0] == 'PATCH' for e in self.events))
         self.events.clear();self.existing = dict(self.remote, draft=False)
-        with self.assertRaisesRegex(ValueError, '已经公开'):self.publish()
+        self.assertFalse(self.publish()['draft'])
+        self.assertTrue(any(e[0] == 'download' for e in self.events))
         self.assertFalse(any(e[0] in {'POST', 'PATCH', 'gh'} for e in self.events))
 
     def test_wrong_workflow_or_commit_is_rejected(self):

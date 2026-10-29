@@ -18,6 +18,9 @@ def check(dist: Path) -> dict:
     package_meta = json.loads(Path("package.json").read_text())
     version = package_meta["version"]
     repository = package_meta["repository"]["url"].removesuffix(".git").removeprefix("git+").rstrip("/")
+    assert package_meta.get("homepage") == repository, "项目主页缺失或与仓库不一致"
+    assert package_meta.get("bugs", {}).get("url") == repository + "/issues", "问题反馈入口缺失"
+    assert source.get("homepage_url") == repository, "安装清单缺少正确主页"
     repo_url = urlsplit(repository)
     assert repo_url.scheme == "https" and repo_url.netloc == "github.com", "发布仓库必须是明确的GitHub HTTPS地址"
     with zipfile.ZipFile(package) as archive:
@@ -30,6 +33,7 @@ def check(dist: Path) -> dict:
             assert not name.endswith((".sqlite", ".xpi", ".map")), f"非运行内容：{name}"
         manifest = json.loads(archive.read("manifest.json"))
         zotero = manifest["applications"]["zotero"]
+        assert manifest.get("homepage_url") == repository, "安装包主页缺失或错误"
         assert manifest["version"] == source["version"] == version, "包版本不一致"
         assert zotero["id"] == source["applications"]["zotero"]["id"], "包身份不一致"
         assert zotero["strict_min_version"] == "10.0" and zotero["strict_max_version"] == "10.0.*", "兼容范围错误"

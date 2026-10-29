@@ -34,8 +34,10 @@ flowchart LR
 
 - 构建job只有只读权限，执行核心／UI／Python测试、隐私／版本／生产包检查。
 - 发布job不安装npm依赖，只接收该次构建的固定资产，核对源码提交、版本、插件ID和摘要。
-- 标签只能指向该次提交；同名已发布版本不覆盖、不移动标签。失败时只保留草稿。
-- 已有草稿只补缺失资产，相同摘要可继续；不使用`--clobber`替换其他字节。失败请优先重跑失败job；源码改动则升新版本。
+- 标签只能指向该次提交；同名已发布版本不覆盖、不移动标签。公开前失败保留草稿；公开后检查失败可重跑失败job，同一候选只读复核，字节不同会拒绝。
+- 已有草稿只补缺失资产，相同摘要可继续；不使用`--clobber`替换其他字节。失败请优先重跑失败job；源码改动或重新构建导致资产字节变化则升新版本。
+- Release标题与tag都用 `v版本号`；安装包名固定为 `zotero-update-metadata.xpi`。
+- 包内主页、npm主页和问题入口必须与仓库一致，缺失会阻断构建检查。
 - GitHub下载资产必须与候选相同，之后才公开。预发布标记由版本后缀决定，例如`0.4.1-beta.2`。
 
 工作流是`.github/workflows/ci.yml`和`release.yml`；统一发版脚本是`scripts/release.py`，固定包／验包复用`scripts/prepare-release.py`。Actions固定到已核对的完整commit SHA，不需要私人PAT或SSH密钥。
@@ -57,8 +59,9 @@ CI不替代真实Zotero界面与数据验收；已知验证范围见 `CONTRIBUTI
 npm run ci
 npm run release:prepare
 npm run release:verify -- _build/实际候选目录
+npm run release:check -- v0.4.2
 ```
 
-这三个命令不修改Git或调用GitHub发布API。候选包含XPI、版本说明、摘要与更新JSON；预发布只携带`update-beta.json`，不携带正式更新文件。
+上述命令均不修改Git或调用GitHub发布API。`release:check`只读访问公开GitHub接口和下载地址，检查正式／预发布标记、标题、Latest、安装包主页、摘要及实际更新文件；正式版仅校验当前Latest。候选包含XPI、版本说明、摘要与更新JSON；预发布只携带`update-beta.json`，不携带正式更新文件。
 
 旧的`zotero-plugin release`不作为项目入口。

@@ -13,3 +13,5 @@
 - `npm run release:verify -- <目录>`：核对固定候选／下载资产的文件列表、摘要、版本和更新文件。
 
 发布步骤见根目录`RELEASING.md`。输出报告、构建、依赖和测试数据应放忽略目录。检查失败不得算作通过。完整开发及数据保护约定见根目录`CONTRIBUTING.md`。
+
+- `npm run release:check -- v版本号`：只读在线核对公开Release／Latest、安装包主页、资产摘要与正式更新入口；正式版检查当前Latest。

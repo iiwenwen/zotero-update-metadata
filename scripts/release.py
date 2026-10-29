@@ -132,12 +132,18 @@ def publish_artifacts(directory):
     tag = info['tag']
     release = find_release(tag)
     if release and not release['draft']:
-        raise ValueError('该版本已经公开；请升级版本，不能替换已发布资产')
+        # 失败job重跑可能发生在公开之后；同一候选只能只读复核，不能替换资产。
+        ensure_tag(tag, commit)
+        download_and_verify(tag, info)
+        if release['prerelease'] != beta:
+            raise ValueError('已公开版本的渠道不一致')
+        print(release['html_url'], flush=True)
+        return release
     ensure_tag(tag, commit)
     if release is None:
         release = api(f'repos/{REPO}/releases', 'POST', {
             'tag_name': tag, 'target_commitish': commit,
-            'name': f'Zotero 元数据更新 {info["version"]}',
+            'name': tag,
             'body': (directory / candidate.NOTES).read_text(),
             'draft': True, 'prerelease': beta, 'make_latest': 'false',
         })

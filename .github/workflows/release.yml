@@ -58,3 +58,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PUBLISH: ${{ inputs.publish }}
         run: python3 scripts/release.py --publish-directory _build/release
+      - name: Check public release, homepage and update endpoint
+        run: |
+          for attempt in 1 2 3; do
+            python3 scripts/check-release.py && exit 0
+            sleep 5
+          done
+          exit 1

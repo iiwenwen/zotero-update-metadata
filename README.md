@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Zotero-10-CC2936?style=flat-square" alt="支持 Zotero 10">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="使用 TypeScript">
-  <img src="https://img.shields.io/badge/版本-0.4.1_正式版-blue?style=flat-square" alt="0.4.1 正式版">
+  <img src="https://img.shields.io/badge/版本-0.4.2_正式版-blue?style=flat-square" alt="0.4.2 正式版">
   <img src="https://img.shields.io/badge/许可-待定-lightgrey?style=flat-square" alt="许可证尚未确定">
 </p>
 
@@ -53,13 +53,17 @@
 
 需要 **Zotero 10 桌面版**，目前主要在 macOS 上使用。
 
-> **当前正式版：[0.4.1](https://github.com/iiwenwen/zotero-update-metadata/releases/latest)**。下载 `zotero-update-metadata.xpi` 安装。此版使用独立插件 ID；从旧 1.x 或测试版切换时需手动安装，并先禁用或移除测试版，避免两个版本同时运行。
+> **当前正式版：[0.4.2](https://github.com/iiwenwen/zotero-update-metadata/releases/latest)**。下载 `zotero-update-metadata.xpi` 安装。此版使用独立插件 ID；从旧 1.x 或测试版切换时需手动安装，并先禁用或移除测试版，避免两个版本同时运行。
 
 1. 打开 Zotero，进入 **工具 → 插件**。
 2. 点齿轮菜单，选 **从文件安装插件**。
 3. 选中 `.xpi`，按提示完成安装。
 
 装之前备份文库，先用少量条目试用——撤销不能代替备份。
+
+### 后续更新
+
+安装正式版后，由 Zotero 内置插件管理器检查和安装后续正式更新；也可在 **工具 → 插件** 的齿轮菜单中手动检查更新。使用同一正式 ID 的 `0.4.1` 可更新到 `0.4.2`。旧 1.x 和 `@local` 测试版不会跨 ID 自动迁移，首次切换仍需手动安装。插件详情中的主页指向本仓库，问题请到 [Issues](https://github.com/iiwenwen/zotero-update-metadata/issues) 反馈。
 
 ## 使用
 
