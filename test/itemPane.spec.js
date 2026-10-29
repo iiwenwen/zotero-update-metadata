@@ -1,3 +1,4 @@
+const PLUGIN_ID = require("../addon/manifest.json").applications.zotero.id;
 // 无GUI机制测试；通过UI专用离线fixture运行，不接管真实Zotero。
 const { expect } = require("chai");
 
@@ -140,7 +141,7 @@ describe("原生条目侧栏离线机制", function () {
     controller.register(first); controller.register(first); controller.register(second);
     expect(registrations).to.have.lengthOf(1);
     const options = registrations[0];
-    expect(options.pluginID).to.equal("zmta-update-metadata@local");
+    expect(options.pluginID).to.equal(PLUGIN_ID);
     expect(options.header.l10nID).to.equal("zmta-item-pane-header");
     expect(options.sidenav.l10nID).to.equal("zmta-item-pane-sidenav");
     expect(options.header.icon).to.equal("file:///plugin/content/icons/favicon.png");

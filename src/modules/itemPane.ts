@@ -1,9 +1,9 @@
+import { PLUGIN_ID } from "../config";
 import { inspectBatchStatus, runBatchWorkflow } from "./batchRuntime";
 import { normalizeDOI } from "./update/resolution";
 import { getWorkflowActivity, subscribeWorkflowActivity } from "./workflowActivity";
 import { isItemPaneShown, METADATA_PREFS_PANE_ID } from "./itemPanePreferences";
 
-const PLUGIN_ID = "zmta-update-metadata@local";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const MAIN_WINDOW_FTL = "zmta-mainWindow.ftl";
 let localizedWindows = new WeakSet<object>();

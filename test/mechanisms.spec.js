@@ -1,3 +1,4 @@
+const PLUGIN_ID = require("../addon/manifest.json").applications.zotero.id;
 // scaffold test：机制级测试——「显示机制是否正确调用」
 // 拦截「代码对但显示不对」（MenuManager l10nID / PreferencePanes.register / 产物版本）
 const { assert, expect } = require("chai");
@@ -28,7 +29,7 @@ describe("显示机制", function () {
     });
     it("插件加载时注册过设置界面", function () {
       assert.isTrue(addon.data.initialized, "onStartup 应完成（含设置界面注册）");
-      const panes = Zotero.PreferencePanes.pluginPanes.filter((pane) => pane.pluginID === "zmta-update-metadata@local");
+      const panes = Zotero.PreferencePanes.pluginPanes.filter((pane) => pane.pluginID === PLUGIN_ID);
       expect(panes).to.have.lengthOf(1);
       expect(panes[0].id).to.equal("zmta-metadata-preferences");
       expect(panes[0].src).to.include("content/preferences.xhtml");
@@ -42,7 +43,7 @@ describe("显示机制", function () {
     it("宿主保存一份插件section及真实生命周期回调", function () {
       if (!Zotero.ItemPaneManager?.registerSection) this.skip();
       const sections = Zotero.ItemPaneManager.customSectionData.options
-        .filter((section) => section.pluginID === "zmta-update-metadata@local");
+        .filter((section) => section.pluginID === PLUGIN_ID);
       expect(sections).to.have.lengthOf(1);
       expect(sections[0].header.l10nID).to.equal("zmta-item-pane-header");
       expect(sections[0].sidenav.l10nID).to.equal("zmta-item-pane-sidenav");

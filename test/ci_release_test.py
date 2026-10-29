@@ -51,7 +51,7 @@ class CIRelease(unittest.TestCase):
         with patch.object(r, 'ROOT', self.root), patch.dict(os.environ, self.env), patch.object(r.candidate, 'verify', return_value=self.info), patch.object(r, 'git', side_effect=lambda *args: TREE if 'HEAD^{tree}' in args else COMMIT), patch.object(r, 'api', side_effect=self.api), patch.object(r, 'gh', side_effect=lambda *args: self.events.append(('gh', args, None))), patch.object(r, 'download_and_verify', side_effect=lambda *_: self.events.append(('download', None, None))):
             return r.publish_artifacts(self.directory)
 
-    def test_beta_can_publish_but_stable_without_decisions_cannot(self):
+    def test_beta_can_publish_but_stable_with_development_id_cannot(self):
         self.assertTrue(r.validate_binding(self.info, COMMIT, TREE, '0.4.1-beta.1', 'test@local', False, True))
         stable = dict(self.info, version='0.4.1', prereleaseVersion=False)
         with self.assertRaisesRegex(ValueError, '正式'):
@@ -59,6 +59,12 @@ class CIRelease(unittest.TestCase):
         bad = dict(self.info, sourceCommit='c' * 40)
         with self.assertRaisesRegex(ValueError, '不一致'):
             r.validate_binding(bad, COMMIT, TREE, '0.4.1-beta.1', 'test@local', False, True)
+
+    def test_stable_can_keep_license_undecided_without_claiming_one(self):
+        stable = dict(self.info, version='0.4.1', prereleaseVersion=False,
+                      addonID='test@example.org', developmentID=False)
+        self.assertFalse(r.validate_binding(stable, COMMIT, TREE, '0.4.1', 'test@example.org', False, True))
+        self.assertFalse(stable['licenseFilePresent'])
 
     def test_download_check_precedes_publish_and_latest_stays_false(self):
         result = self.publish()
@@ -72,6 +78,20 @@ class CIRelease(unittest.TestCase):
     def test_download_failure_cannot_publish(self):
         with patch.object(r, 'ROOT', self.root), patch.dict(os.environ, self.env), patch.object(r.candidate, 'verify', return_value=self.info), patch.object(r, 'git', side_effect=lambda *args: TREE if 'HEAD^{tree}' in args else COMMIT), patch.object(r, 'api', side_effect=self.api), patch.object(r, 'gh'), patch.object(r, 'download_and_verify', side_effect=ValueError('bad downloaded hash')):
             with self.assertRaises(ValueError):r.publish_artifacts(self.directory)
+        self.assertFalse(any(e[0] == 'PATCH' for e in self.events))
+
+    def test_verified_stable_becomes_latest_but_draft_does_not(self):
+        (self.root / 'LICENSE').write_text('fixture license')
+        (self.root / 'package.json').write_text(json.dumps({'version': '2.0.0'}))
+        (self.root / 'addon/manifest.json').write_text(json.dumps({'applications': {'zotero': {'id': 'test@example.org'}}}))
+        self.info.update(version='2.0.0', tag='v2.0.0', addonID='test@example.org', prereleaseVersion=False, developmentID=False, licenseFilePresent=True)
+        self.publish()
+        published = next(i for i, e in enumerate(self.events) if e[0] == 'PATCH')
+        self.assertLess(next(i for i, e in enumerate(self.events) if e[0] == 'download'), published)
+        self.assertEqual(self.events[published][2], {'draft': False, 'prerelease': False, 'make_latest': 'true'})
+        self.events.clear()
+        self.env['RELEASE_PUBLISH'] = 'false'
+        self.publish()
         self.assertFalse(any(e[0] == 'PATCH' for e in self.events))
 
     def test_draft_mode_does_not_publish_and_existing_public_release_is_immutable(self):

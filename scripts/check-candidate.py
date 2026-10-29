@@ -34,8 +34,8 @@ def check(dist: Path) -> dict:
         assert zotero["id"] == source["applications"]["zotero"]["id"], "包身份不一致"
         assert zotero["strict_min_version"] == "10.0" and zotero["strict_max_version"] == "10.0.*", "兼容范围错误"
         assert zotero["update_url"].startswith("https://") and "{{" not in zotero["update_url"], "未解析更新地址"
-        update_name = "update-beta.json" if "-" in version else "update.json"
-        assert zotero["update_url"] == repository + "/releases/download/release/" + update_name, "插件自动更新地址与仓库／渠道不一致"
+        update_path = "/releases/download/release/update-beta.json" if "-" in version else "/releases/latest/download/update.json"
+        assert zotero["update_url"] == repository + update_path, "插件自动更新地址与仓库／渠道不一致"
         prefs = archive.read("prefs.js").decode()
         ui = archive.read("content/preferences.xhtml").decode()
         assert "defaultChecked" not in prefs + ui, "无效偏好仍在包内"
@@ -45,6 +45,9 @@ def check(dist: Path) -> dict:
             assert ui.count(f'preference="extensions.zmta.{key}"') == 1, f"设置绑定缺失或重复：{key}"
         assert 'preference="extensions.zmta.showTechnicalDetails"' not in ui, "普通设置不应保留技术详情控件"
         code = archive.read("content/scripts/zmta.js").decode()
+        assert zotero["id"] in code, "运行时插件身份与安装清单不一致"
+        if not zotero["id"].endswith("@local"):
+            assert "zmta-update-metadata@local" not in code, "正式包仍包含旧开发注册身份"
         assert "Mock 场景" not in code and "npm start 使用离线 Mock" not in code, "Mock 实现未从生产包排除"
         assert not re.search(r"\.testApi\s*=", code), "测试 API 暴露到生产包"
         notice = archive.read("content/third-party-notices.txt").decode()

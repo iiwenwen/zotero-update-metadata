@@ -2,6 +2,7 @@
 // 参考官方模板结构，最小化。
 import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
+import manifest from "./addon/manifest.json";
 
 const isTestBuild = process.env.NODE_ENV === "test";
 const useMockAcquisition = process.env.NODE_ENV === "development"
@@ -12,13 +13,15 @@ export default defineConfig({
   dist: ".scaffold/build",
   name: "Zotero 元数据更新",
   xpiName: pkg.name,
-  id: "zmta-update-metadata@local",
+  id: manifest.applications.zotero.id,
   namespace: "zmta",
   // 仅测试客户端接收；不把维护者机器路径写入源码或生产插件。
   test: {
     prefs: { "extensions.zmta.testProjectRoot": process.cwd() },
   },
-  updateURL: `https://github.com/{{owner}}/{{repo}}/releases/download/release/${pkg.version.includes("-") ? "update-beta.json" : "update.json"}`,
+  updateURL: pkg.version.includes("-")
+    ? "https://github.com/{{owner}}/{{repo}}/releases/download/release/update-beta.json"
+    : "https://github.com/{{owner}}/{{repo}}/releases/latest/download/update.json",
   server: {
     // 让 Zotero.debug 进 stdout（否则 serve 日志看不到插件 debug）
     startArgs: ["-ZoteroDebugText"],

@@ -40,14 +40,16 @@ flowchart LR
 
 工作流是`.github/workflows/ci.yml`和`release.yml`；统一发版脚本是`scripts/release.py`，固定包／验包复用`scripts/prepare-release.py`。Actions固定到已核对的完整commit SHA，不需要私人PAT或SSH密钥。
 
-## 当前发布约定
+## 正式版与预发布版
 
-- 当前测试版本为`0.4.1-beta.2`，保留开发ID，公开为Pre-release，不设Latest。
-- 脚本不修改固定自动更新文件，也不触碰旧1.x插件的更新入口。
-- 旧版ID是`zotero-update-metadata@iiwenwen`，重写版是`zmta-update-metadata@local`，需手动安装，不能当作旧版的直接自动升级。
-- 正式公开版须先确定项目许可和正式插件身份；当前预发布仍需在测试库小范围试用，CI不替代真实Zotero界面／数据验收。
+- 无后缀版本（例如 `0.4.1`）公开为正式版，下载验包通过后设为 Latest。带后缀的版本标为 Pre-release，不改变 Latest；草稿也不改变 Latest。
+- 当前正式 ID 为 `zmta-update-metadata@iiwenwen`，以 `addon/manifest.json` 为正本。构建、Toolkit、菜单、设置与侧栏共用该身份。
+- 正式包的更新地址为 `https://github.com/iiwenwen/zotero-update-metadata/releases/latest/download/update.json`。每次正式发布随 Latest 自动切换，不另行移动标签或覆盖旧版本资产。
+- 旧 1.x 的 ID 为 `zotero-update-metadata@iiwenwen`，开发测试版为 `zmta-update-metadata@local`。两者都需手动切换；安装正式版前先禁用或移除测试版。脚本不修改旧版的更新入口。
+- 预发布渠道仍使用原有的 beta 地址；本流程不启用开发 ID 的自动迁移。
+- 按负责人决定，当前先发正式包，项目许可继续暂缓，npm 元数据为 `UNLICENSED`，不自动创建 `LICENSE` 或替负责人授予许可。候选清单如实记录许可文件是否存在。
 
-本次自动化不把许可暂缓、未完成的实显或第二份评审写成已通过。修改Latest、启用固定自动更新及旧版迁移留待明确决定。
+CI不替代真实Zotero界面与数据验收；已知验证范围见 `CONTRIBUTING.md`。正式身份禁止使用 `@local`。
 
 ## 只想本地检查或打包
 

@@ -75,8 +75,8 @@ def validate_binding(info, commit, tree, version, addon_id, license_present, pub
     beta = '-' in version
     if info['prereleaseVersion'] != beta or info['developmentID'] != addon_id.endswith('@local') or info['licenseFilePresent'] != license_present:
         raise ValueError('候选渠道或身份标记不一致')
-    if publish and not beta and (not license_present or addon_id.endswith('@local')):
-        raise ValueError('正式公开版须先确定项目许可和正式插件ID；开发身份可发明确的预发布版')
+    if publish and not beta and addon_id.endswith('@local'):
+        raise ValueError('正式公开版须使用正式插件ID，不能使用开发身份')
     return beta
 
 
@@ -157,13 +157,14 @@ def publish_artifacts(directory):
     ensure_tag(tag, commit)
     if publish:
         release = api(f'repos/{REPO}/releases/{release["id"]}', 'PATCH', {
-            'draft': False, 'prerelease': beta, 'make_latest': 'false',
+            'draft': False, 'prerelease': beta, 'make_latest': 'false' if beta else 'true',
         })
     print(release['html_url'], flush=True)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a') as stream:
-            stream.write(f'### {info["tag"]}\n\n[查看{"Release" if publish else "草稿"}]({release["html_url"]})\n\n已下载并核对XPI、摘要、源码提交及渠道。未修改Latest或自动更新入口。\n')
+            channel = '正式版已设为Latest，正式更新入口随Latest生效。' if publish and not beta else '未修改Latest或正式更新入口。'
+            stream.write(f'### {info["tag"]}\n\n[查看{"Release" if publish else "草稿"}]({release["html_url"]})\n\n已下载并核对XPI、摘要、源码提交及渠道。{channel}\n')
     return release
 
 

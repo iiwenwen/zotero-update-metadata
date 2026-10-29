@@ -1,3 +1,4 @@
+import { PLUGIN_ID } from "./config";
 // 生命周期 hooks（参考 template src/hooks.ts）
 // 注意：toolkit 5.2.0 有 MenuManager（见官方文档 windingwind.github.io/zotero-plugin-toolkit/）。
 // 当前菜单用手写 Zotero 原生 MenuManager，后续应按使用源改用 toolkit MenuManager（待修正）。
@@ -92,7 +93,7 @@ async function registerPrefsPane(): Promise<void> {
       return;
     }
     await Zotero.PreferencePanes.register({
-      pluginID: "zmta-update-metadata@local",
+      pluginID: PLUGIN_ID,
       id: METADATA_PREFS_PANE_ID,
       src: rootURI + "content/preferences.xhtml",
       label: String((Zotero as any).locale || "zh-CN").startsWith("zh") ? "Zotero 元数据更新" : "Zotero Metadata Update",
@@ -123,7 +124,7 @@ function registerMenu(mainWin: any): void {
   try {
     const registeredMenuKey = menuManager.registerMenu({
       menuID: MENU_ID,
-      pluginID: "zmta-update-metadata@local",
+      pluginID: PLUGIN_ID,
       target: "main/library/item",
       menus: buildBatchMenuEntries(mainWin),
     });

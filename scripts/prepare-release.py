@@ -185,8 +185,10 @@ def prepare():
     print(f'本地候选已准备：{directory.relative_to(ROOT)}')
     print(f'版本 {info["version"]}；标签 {info["tag"]}；提交 {commit}')
     print('尚未创建标签、推送或发布Release。下一步见RELEASING.md。')
-    if info['developmentID'] or not info['licenseFilePresent']:
-        print('当前仍含开发ID或未确定项目许可；正式发布前须处理。')
+    if info['developmentID']:
+        print('当前仍含开发ID；正式发布前须改为正式插件身份。')
+    if not info['licenseFilePresent']:
+        print('项目许可尚未确定；此次打包不新增公开授权。')
     return directory, info
 
 
