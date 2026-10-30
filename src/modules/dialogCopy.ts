@@ -7,6 +7,15 @@ declare const Zotero: any;
 /** 构建后 FTL 文件名带插件前缀（见 zotero-plugin.config.ts 的 namespace）。 */
 export const DIALOG_FTL = "zmta-dialogs.ftl";
 
+/** 构建同时给 FTL 消息 id 加同一个前缀；代码里只写短 id，由这里统一补齐。 */
+export const MESSAGE_NAMESPACE = "zmta";
+
+/** 短 id → 运行时消息 id。已带前缀的原样返回，重复调用无副作用。 */
+export function ftlMessageId(id: MessageId): MessageId {
+  // 必须与构建的 needsPrefix 同一条规则（不带连字符），否则 zmtax-* 这类 id 会两边分叉。
+  return id.startsWith(MESSAGE_NAMESPACE) ? id : `${MESSAGE_NAMESPACE}-${id}`;
+}
+
 export type MessageId = string;
 
 export interface DialogCopy {
@@ -39,6 +48,20 @@ function guardedWrite(pending: WeakMap<object, number>, el: any, write: (value: 
 function documentL10n(win: any): any {
   try {
     return win?.document?.l10n ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 取一条动态文案；缺失时返回 null 由调用方继续找下一个来源。
+ * Fluent 对找不到的消息不报错，而是原样返回 id——必须按未解析处理，否则界面会显示 zmta-dlg-*。
+ */
+async function formatFrom(target: any, id: MessageId, args?: Record<string, unknown>): Promise<string | null> {
+  if (!target?.formatValue) return null;
+  try {
+    const value = await Promise.resolve(target.formatValue(ftlMessageId(id), args));
+    return typeof value === "string" && value && value !== ftlMessageId(id) ? value : null;
   } catch {
     return null;
   }
@@ -94,10 +117,11 @@ export async function createDialogCopy(win: any, staticIds: readonly MessageId[]
   const ids = [...new Set(staticIds)];
   if (l10n?.formatValues && ids.length) {
     try {
-      const resolved = await l10n.formatValues(ids.map((id) => ({ id })));
+      const resolved = await l10n.formatValues(ids.map((id) => ({ id: ftlMessageId(id) })));
       ids.forEach((id, index) => {
         const value = resolved?.[index];
-        if (typeof value === "string" && value) values.set(id, value);
+        // 缺失消息会被原样返回 id，不能当作已解析。
+        if (typeof value === "string" && value && value !== ftlMessageId(id)) values.set(id, value);
       });
     } catch (error) {
       Zotero.debug(`[zmta-i18n] 对话框文案解析失败：${error}`);
@@ -112,33 +136,27 @@ export async function createDialogCopy(win: any, staticIds: readonly MessageId[]
     }
     return fillArgs(value, args);
   };
+  // 元素所在窗口的 l10n 未必注册了本插件 FTL：取不到就回主窗口，都取不到才退回静态表（保留参数）。
+  const resolveInto = (write: (value: string) => void, el: any, id: MessageId, args?: Record<string, unknown>): void => {
+    const target = documentL10n(el.ownerDocument?.defaultView);
+    const fallback = () => write(format(id, args));
+    if (!args || (!target?.formatValue && !l10n?.formatValue)) { fallback(); return; }
+    formatFrom(target, id, args)
+      .then(async (value) => value ?? (target === l10n ? null : await formatFrom(l10n, id, args)))
+      .then((value) => write(value ?? format(id, args)))
+      .catch(fallback);
+  };
   return {
     text(id) {
       return format(id);
     },
     apply(el, id, args) {
       if (!el) return;
-      const write = guardedWrite(pending, el, (value) => { el.textContent = value; });
-      const target = documentL10n(el.ownerDocument?.defaultView) ?? l10n;
-      if (!args || !target?.formatValue) {
-        write(format(id, args));
-        return;
-      }
-      Promise.resolve(target.formatValue(id, args))
-        .then((value: unknown) => write(typeof value === "string" && value ? value : format(id)))
-        .catch(() => write(format(id)));
+      resolveInto(guardedWrite(pending, el, (value) => { el.textContent = value; }), el, id, args);
     },
     attribute(el, name, id, args) {
       if (!el) return;
-      const write = guardedWrite(pending, el, (value) => { el.setAttribute?.(name, value); });
-      const target = documentL10n(el.ownerDocument?.defaultView) ?? l10n;
-      if (!args || !target?.formatValue) {
-        write(format(id, args));
-        return;
-      }
-      Promise.resolve(target.formatValue(id, args))
-        .then((value: unknown) => write(typeof value === "string" && value ? value : format(id)))
-        .catch(() => write(format(id)));
+      resolveInto(guardedWrite(pending, el, (value) => { el.setAttribute?.(name, value); }), el, id, args);
     },
   };
 }

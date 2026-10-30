@@ -67,8 +67,14 @@ export function openExecutionDialog(toolkit: any, total: number, copyMessages: D
     dialog.window?.addEventListener?.("keydown", preventClose, true);
     render();
   }, beforeUnloadCallback: () => { closed = true; owned.release(); dialog.window?.removeEventListener?.("close", preventClose, true); dialog.window?.removeEventListener?.("keydown", preventClose, true); } });
-  dialog.open(copyMessages.text(undo ? "dlg-exec-title-undo" : "dlg-exec-title-update"), { width: 520, height: 300, centerscreen: true, resizable: true, noDialogMode: true });
-  owned.attach();
+  try {
+    dialog.open(copyMessages.text(undo ? "dlg-exec-title-undo" : "dlg-exec-title-update"), { width: 520, height: 300, centerscreen: true, resizable: true, noDialogMode: true });
+    owned.attach();
+  } catch (error) {
+    // 同其他自有窗：open 抛错时结算，避免残留占位条目影响聚焦恢复。
+    owned.cancel();
+    throw error;
+  }
   return {
     update(state) { if (!closed) { latest = { ...state }; render(); } },
     close() {

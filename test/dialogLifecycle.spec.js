@@ -62,6 +62,107 @@ describe("本插件Dialog卸载生命周期（离线机制）", function () {
     expect(Dialog.instances[0].closeCalls).to.equal(0);
   });
 
+  it("窗口被宿主直接销毁只派发unload时也结算，工作流占用随之释放", async function () {
+    // 用可手动推进的队列代替真实主线程：窗口销毁后其 setTimeout 未必再触发，必须走主线程队列。
+    const originalServices = globalThis.Services;
+    const rechecks = [];
+    globalThis.Services = { tm: { dispatchToMainThread(run) { rechecks.push(run); } } };
+    try {
+      const storage = new api.MemoryBatchJournalStorage(); api.resetBatchRuntimeForTests({ storage });
+      const item = { id: 1, key: "A", libraryID: 1, itemType: "book", isRegularItem: () => true, getField: () => "" };
+      const pending = api.runBatchWorkflow([item], { Dialog }, undefined);
+      let settled = false; pending.then(() => { settled = true; });
+      for (let i = 0; i < 20 && !Dialog.instances.some(d => d.layout?.id === "zmta-batch-review"); i++) await flush();
+      const dialog = Dialog.instances.find(d => d.layout?.id === "zmta-batch-review");
+      expect(api.getWorkflowActivity()).to.equal("reviewing");
+      // Gecko 销毁顺序：先派发 unload，关闭标记之后才生效，且没有第二次事件。
+      dialog.events.get("unload")?.({});
+      expect(rechecks).to.have.length(1); // 只排一次复查
+      dialog.events.get("unload")?.({}); // 重复派发不再排队
+      expect(rechecks).to.have.length(1);
+      await flush();
+      expect(settled).to.equal(false); // 复查未推进前不得结算
+      expect(api.getWorkflowActivity()).to.equal("reviewing");
+      dialog.closed = true; dialog.window.closed = true;
+      rechecks.shift()(); // 推进下一轮主线程复查
+      await flush();
+      expect(settled).to.equal(true);
+      expect(await pending).to.equal(null);
+      expect(api.getWorkflowActivity()).to.equal("idle");
+      expect(dialog.closeCalls).to.equal(0); // 已消失的窗口不再重复 close
+      expect(await storage.read()).to.equal(null);
+      expect(rechecks).to.have.length(0); // 结算后不再排复查
+    } finally {
+      if (originalServices === undefined) delete globalThis.Services; else globalThis.Services = originalServices;
+    }
+  });
+
+  it("复查链有界：窗口一直活着就停止排队，之后真正销毁的unload仍能重新开链并结算", async function () {
+    const originalServices = globalThis.Services;
+    const rechecks = [];
+    globalThis.Services = { tm: { dispatchToMainThread(run) { rechecks.push(run); } } };
+    try {
+      const pending = api.showBatchConfirmDialog([preview()], { Dialog }, copy);
+      let settled = false; pending.then(() => { settled = true; });
+      const dialog = Dialog.instances[0];
+      dialog.events.get("unload")?.({}); // 误判的一次 unload：窗口还活着
+      let rounds = 0;
+      while (rechecks.length && rounds++ < 20) { rechecks.shift()(); await flush(); }
+      expect(rounds).to.be.lessThan(20); // 有界：不会无限排队
+      expect(settled).to.equal(false); // 窗口活着就绝不结算
+      expect(rechecks).to.have.length(0);
+      dialog.closed = true; dialog.window.closed = true;
+      dialog.events.get("unload")?.({}); // 真正的销毁事件：链条已归零，必须能重新响应
+      while (rechecks.length && rounds++ < 40) { rechecks.shift()(); await flush(); }
+      await flush();
+      expect(settled).to.equal(true);
+      expect(await pending).to.equal(null);
+    } finally {
+      if (originalServices === undefined) delete globalThis.Services; else globalThis.Services = originalServices;
+    }
+  });
+
+  it("窗口包装器读取抛错按已消失处理，仍然结算而不是挂住", async function () {
+    const pending = api.showBatchConfirmDialog([preview()], { Dialog }, copy);
+    const dialog = Dialog.instances[0];
+    const realWindow = dialog.window;
+    Object.defineProperty(dialog, "window", { configurable: true, get() { throw new Error("dead wrapper"); } });
+    dialog.events.get("unload")?.({});
+    expect(await pending).to.equal(null);
+    expect(dialog.closeCalls).to.equal(0);
+    expect(realWindow.closed).to.equal(false); // 真实窗口没被关闭，只是读不到了
+  });
+
+  it("打开瞬间的unload不算窗口消失，审核仍能继续并正常确认", async function () {
+    const pending = api.showBatchConfirmDialog([preview()], { Dialog }, copy);
+    const dialog = Dialog.instances[0];
+    dialog.events.get("unload")?.({}); // 初始化期 unload：窗口还活着
+    await flush(); await flush();
+    expect(dialog.closed).to.equal(false);
+    expect(dialog.closeCalls).to.equal(0);
+    dialog.click("zmta-batch-confirm");
+    expect((await pending)?.length).to.equal(1);
+    expect(dialog.closed).to.equal(true);
+  });
+
+  it("open抛错时结算，不留下占位条目挡住之后的聚焦恢复", async function () {
+    class Boom extends Dialog { open() { throw new Error("open failed"); } }
+    expect(await api.showBatchConfirmDialog([preview()], { Dialog: Boom }, copy)).to.equal(null);
+    expect(() => api.openBatchPreflightDialog({ Dialog: Boom }, 1, copy)).to.throw("open failed");
+    const target = { closed: false, focus() { this.focused = true; } };
+    expect(api.restorePluginWindowFocus(target)).to.equal(true);
+    expect(target.focused).to.equal(true);
+  });
+
+  it("open后拿不到窗口也结算，不留悬空确认", async function () {
+    class NoWindow extends Dialog { open() { this.window = undefined; return this; } }
+    const pending = api.showBatchConfirmDialog([preview()], { Dialog: NoWindow }, copy);
+    expect(await pending).to.equal(null);
+    const dialog = Dialog.instances[0];
+    expect(dialog.closeCalls).to.equal(0);
+    expect(api.getWorkflowActivity()).to.equal("idle");
+  });
+
   it("停止后的旧scope不能新开确认/结果/记录或重新查找", async function () {
     api.shutdownPluginDialogs();
     expect(await api.showBatchConfirmDialog([preview()], { Dialog }, copy)).to.equal(null);

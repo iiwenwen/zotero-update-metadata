@@ -42,7 +42,7 @@ import { ATTEMPT_OUTCOMES, ROUTE_IDS, classifyAttemptOutcome, createAttemptDiagn
 import { BatchPreflightCancelledError, PREFLIGHT_PROGRESS_STAGES } from "./modules/batchTypes";
 import { getReviewSelectionDefaults } from "./modules/reviewSelectionDefaults";
 import { getWorkflowActivity, subscribeWorkflowActivity, tryAcquireWorkflowActivity } from "./modules/workflowActivity";
-import { createDialogCopy, staticDialogCopy } from "./modules/dialogCopy";
+import { MESSAGE_NAMESPACE, createDialogCopy, fillCopy, ftlMessageId, staticDialogCopy } from "./modules/dialogCopy";
 import { EXECUTION_COPY_IDS, RESULT_COPY_IDS, UNDO_COPY_IDS } from "./modules/workflowDialogs";
 import {
   buildBatchPreflightDialogLayout,
@@ -75,7 +75,10 @@ class Addon {
     STATUS_MESSAGE_IDS: typeof STATUS_MESSAGE_IDS;
     BATCH_REVIEW_COPY_IDS: typeof BATCH_REVIEW_COPY_IDS;
     createDialogCopy: typeof createDialogCopy;
+    MESSAGE_NAMESPACE: typeof MESSAGE_NAMESPACE;
+    ftlMessageId: typeof ftlMessageId;
     staticDialogCopy: typeof staticDialogCopy;
+    fillCopy: typeof fillCopy;
     getBatchFieldDefaultChecked: typeof getBatchFieldDefaultChecked;
     buildBatchDialogLayout: typeof buildBatchDialogLayout;
     collectBatchSelections: typeof collectBatchSelections;
@@ -179,7 +182,10 @@ class Addon {
       STATUS_MESSAGE_IDS,
       BATCH_REVIEW_COPY_IDS,
       createDialogCopy,
+      MESSAGE_NAMESPACE,
+      ftlMessageId,
       staticDialogCopy,
+      fillCopy,
       getBatchFieldDefaultChecked,
       buildBatchDialogLayout,
       collectBatchSelections,

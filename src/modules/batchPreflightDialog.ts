@@ -214,8 +214,14 @@ export function openBatchPreflightDialog(ztoolkit: any, total: number, copy: Dia
   dialog.addButton(copy.text("dlg-preflight-cancel"), BATCH_PREFLIGHT_ELEMENT_IDS.cancel, { noClose: true, callback: requestCancel });
   dialog.setDialogData({ loadCallback: () => { if (!owned.attach()) return; markDialogWindow(dialog); fillCopy(document(), copy, built.fills); renderBatchPreflightState(document(), state, copy); }, beforeUnloadCallback: () => { requestCancel(); closed = true; owned.release(); } });
   if (owned.active()) {
-    dialog.open(copy.text("dlg-preflight-title"), getBatchPreflightDialogOptions());
-    owned.attach();
+    try {
+      dialog.open(copy.text("dlg-preflight-title"), getBatchPreflightDialogOptions());
+      owned.attach();
+    } catch (error) {
+      // open 抛错时不会有窗口；不结算会留下"占位窗口"条目，之后聚焦恢复恒为 false。
+      owned.cancel();
+      throw error;
+    }
   } else owned.cancel();
 
   return {

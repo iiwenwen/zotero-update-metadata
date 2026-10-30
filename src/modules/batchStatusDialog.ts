@@ -460,8 +460,14 @@ export function showBatchStatusDialog(
         dialog.window?.addEventListener?.("keydown", (event: any) => { if (event.key === "Escape") { event.preventDefault(); finish(); dialog.window?.close?.(); } }); },
       beforeUnloadCallback: finish,
     });
-    dialog.open(copy.text("dlg-history-title"), getBatchStatusDialogOptions());
-    owned.attach();
+    try {
+      dialog.open(copy.text("dlg-history-title"), getBatchStatusDialogOptions());
+      owned.attach();
+    } catch (error) {
+      // 同预检窗：open 抛错时结算，避免残留占位条目影响聚焦恢复。
+      owned.cancel();
+      throw error;
+    }
     observer.onOpen?.(dialog);
   });
 }

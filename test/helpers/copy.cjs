@@ -42,6 +42,7 @@ function loadDialogCopy(locale = "zh-CN") {
 
 /**
  * 把 { layout, fills } 里登记的文案写回布局节点，模拟真实窗口挂载后的填充。
+ * 分派交给生产 fillCopy（含 attribute 分支），这里只提供 getElementById 适配层。
  * 返回同一个 layout，便于链式断言。
  */
 function renderCopy(built, copy) {
@@ -52,17 +53,12 @@ function renderCopy(built, copy) {
     for (const child of node.children || []) walk(child);
   };
   walk(built.layout);
-  for (const entry of built.fills) {
-    const node = index.get(entry.elementID);
-    if (!node) continue;
-    const element = {
-      get textContent() { return node.properties?.textContent; },
-      set textContent(value) { node.properties = { ...(node.properties || {}), textContent: value }; },
-      setAttribute(name, value) { node.attributes = { ...(node.attributes || {}), [name]: value }; },
-    };
-    if (entry.attribute) copy.attribute(element, entry.attribute, entry.id, entry.args);
-    else copy.apply(element, entry.id, entry.args);
-  }
+  const elementFor = (node) => ({
+    get textContent() { return node.properties?.textContent; },
+    set textContent(value) { node.properties = { ...(node.properties || {}), textContent: value }; },
+    setAttribute(name, value) { node.attributes = { ...(node.attributes || {}), [name]: value }; },
+  });
+  globalThis.addon.api.fillCopy({ getElementById: (id) => { const node = index.get(id); return node ? elementFor(node) : null; } }, copy, built.fills);
   return built.layout;
 }
 

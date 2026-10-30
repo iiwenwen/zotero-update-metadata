@@ -58,7 +58,8 @@ describe("三项普通设置离线机制", function () {
     const attributes = {};
     const win = { document: { getElementById: id => id === "zmta-pref-status" ? { setAttribute: (key, value) => { attributes[key] = value; } } : null } };
     api.hooks.onPrefsEvent("reset", { window: win });
-    expect(attributes["data-l10n-id"]).to.equal("pref-defaults-restored");
+    // 构建给 FTL 消息 id 加插件前缀；运行时写入的 id 必须与构建产物一致，否则设置页显示原文 id。
+    expect(attributes["data-l10n-id"]).to.equal("zmta-pref-defaults-restored");
     expect(cleared).to.have.lengthOf(3);
   });
   it("设置窗口各自释放观察者，插件统一清理剩余控件", function () {

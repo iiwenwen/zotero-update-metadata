@@ -17,6 +17,7 @@ import { createZToolkit } from "./utils/ztoolkit";
 import { refreshMainWindowLocalization, registerItemPane, unloadItemPaneWindow, unregisterItemPane } from "./modules/itemPane";
 import { initializeMetadataPreferences, METADATA_PREFS_PANE_ID, resetMetadataPreferences, unloadMetadataPreferences } from "./modules/itemPanePreferences";
 import { getWorkflowActivity } from "./modules/workflowActivity";
+import { ftlMessageId } from "./modules/dialogCopy";
 import { localized } from "./utils/locale";
 import { beginPluginDialogScope, closeLegacyPluginDialogs, isPluginDialogScopeActive, restorePluginWindowFocus, shutdownPluginDialogs } from "./modules/dialogLifecycle";
 
@@ -82,7 +83,7 @@ function onPrefsEvent(type: string, data: { [key: string]: any }): void {
     case "reset":
       try {
         resetMetadataPreferences();
-        data.window?.document?.getElementById("zmta-pref-status")?.setAttribute("data-l10n-id", "pref-defaults-restored");
+        data.window?.document?.getElementById("zmta-pref-status")?.setAttribute("data-l10n-id", ftlMessageId("pref-defaults-restored"));
       } catch (error) {
         Zotero.debug(`[zmta] 恢复设置失败：${error}`);
         Zotero.alert(data.window, localized(PLUGIN_NAME.zh, PLUGIN_NAME.en), "没能恢复默认设置，请重新打开设置后再试。");

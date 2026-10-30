@@ -48,7 +48,8 @@ for (const name of [
 }
 assert.equal("tryAcquireWorkflowActivity" in fixture.addon.api, false, "内部门禁不加入生产公开api");
 const forbidden = () => { throw new Error("离线UI验证禁止宿主写入／联网"); };
-// 所有窗口／DOM均由各用例提供fake；不提供Services或真实宿主连接。
+// 所有窗口／DOM均由各用例提供fake；不提供真实宿主连接。
+// 个别用例会临时注入假 Services（如 tm.dispatchToMainThread）验证主线程复查，用完即还原。
 globalThis.fetch = forbidden;
 globalThis.addon = fixture.addon;
 globalThis.Zotero = {
