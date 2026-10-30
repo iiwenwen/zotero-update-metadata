@@ -1,5 +1,6 @@
 // 批量审核 UI 的纯逻辑测试；由主 Agent 在 addon.api 接入导出后运行。
 const { assert, expect } = require("chai");
+const { loadDialogCopy, renderCopy } = require("./helpers/copy.cjs");
 
 describe("batchConfirmDialog", function () {
   let api;
@@ -64,10 +65,15 @@ describe("batchConfirmDialog", function () {
       && child.children?.[0]?.children?.[0]?.properties?.textContent === title);
   }
 
+  let copy;
+  /** 生产布局 + 挂载后填充，等价于真实窗口显示出来的样子。 */
+  const dialogLayout = (previews, options, actions) => renderCopy(api.buildBatchDialogLayout(previews, copy, options, actions), copy);
+
   before(function () {
     const addon = Zotero.zmtaAddon;
     assert.isNotEmpty(addon, "addon 应存在");
     api = addon.api;
+    ({ copy } = loadDialogCopy());
   });
 
   it("汇总顶部的总数、可更新、跳过、失败及三类候选", function () {
@@ -90,38 +96,35 @@ describe("batchConfirmDialog", function () {
     expect(api.getBatchFieldDefaultChecked(overwrite)).to.equal(false);
   });
 
-  it("切换长条目详情归顶且保留既有勾选节点", function () {
-    const data = previews();
-    const layout = api.buildBatchDialogLayout(data);
-    const tabs = layout.children[1].children[0].children;
-    const pane = { scrollTop: 812 };
-    const checked = { checked: true };
-    const records = new Map([["zmta-batch-detail-pane", pane], ["zmta-batch-field-0-0", checked]]);
-    data.forEach((_, index) => {
-      records.set(`zmta-batch-detail-${index}`, { style: { display: index === 0 ? "block" : "none" } });
-      records.set(`zmta-batch-item-${index}`, { setAttribute() {} });
-    });
-    const doc = { getElementById: (id) => records.get(id) };
-    tabs[1].listeners.find((entry) => entry.type === "click").listener({ currentTarget: { ownerDocument: doc } });
+  it("切换长条目详情归顶且保留既有勾选节点", async function () {
+    const { Dialog } = require("./uiDialog.cjs");
+    const pending = api.showBatchConfirmDialog(previews(), { Dialog }, copy);
+    const dialog = Dialog.instances.at(-1);
+    const input = dialog.nodes.get("zmta-batch-field-0-0");
+    input.checked = false;
+    const pane = dialog.nodes.get("zmta-batch-detail-pane"); pane.scrollTop = 812;
+    const select = dialog.nodes.get("zmta-review-navigation-select");
+    select.value = "2:BOOK2"; select.emit("change");
     expect(pane.scrollTop).to.equal(0);
-    expect(records.get("zmta-batch-detail-1").style.display).to.equal("block");
-    expect(records.get("zmta-batch-field-0-0")).to.equal(checked);
-    expect(checked.checked).to.equal(true);
+    expect(dialog.nodes.get("zmta-batch-detail-1").style.display).to.equal("block");
+    expect(dialog.nodes.get("zmta-batch-field-0-0")).to.equal(input);
+    expect(input.checked).to.equal(false);
+    dialog.click("zmta-batch-cancel"); expect(await pending).to.equal(null);
+    expect(dialog.mediaListeners.size).to.equal(0);
   });
 
   it("布局只显示有内容的审核分区，默认不提供技术详情", function () {
-    const layout = api.buildBatchDialogLayout(previews());
+    const layout = dialogLayout(previews());
     expect(layout.id).to.equal("zmta-batch-review");
     const [header, body, footer] = layout.children;
-    expect(header.children[0].properties.textContent).to.equal("审核元数据更新");
+    expect(header.children[0].properties.textContent).to.equal("确认条目信息更新");
     const selectionSummary = findNode(footer, (node) => node.id === "zmta-batch-selection-summary");
     expect(selectionSummary.properties.textContent).to.equal("已选择 1 个条目 · 1 项更新");
     expect(header.children[1].properties.textContent).to.equal("3 个条目 · 1 个可更新");
     const [left, right] = body.children;
     expect(left.tag).to.equal("nav");
-    expect(left.children).to.have.length(3);
-    expect(left.children[0].children[1].properties.textContent).to.equal("已选 1 / 4 项");
-    expect(left.children[2].attributes["data-status"]).to.equal("failed");
+    expect(left.id).to.equal("zmta-review-navigation");
+    expect(left.children).to.equal(undefined);
     expect(right.tag).to.equal("main");
     const readyDetail = right.children[0];
     const source = findByClass(readyDetail, "zmta-detail-source");
@@ -136,11 +139,27 @@ describe("batchConfirmDialog", function () {
     expect(findByClass(right.children[1], "zmta-detail-source")).to.equal(undefined);
     expect(findByClass(right.children[1], "zmta-item-message").properties.textContent).to.equal("无豆瓣 URL");
     const headers = findNode(readyDetail, (node) => node.tag === "thead");
-    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "字段", "当前值", "上游值"]);
+    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "字段", "现有内容", "新内容"]);
+  });
+
+  it("字段使用宿主名称和可读后备名，来源内部ID不进入普通视图", function () {
+    const data = [previews()[0]];
+    data[0].fields = ["accessDate", "conferenceName", "libraryCatalog", "place", "futureInternalKey"].map((field) => ({ field, local: "", incoming: "新内容", defaultChecked: true }));
+    data[0].candidate = { providerId: "zotero-search" };
+    const fields = Zotero.ItemFields;
+    try {
+      Zotero.ItemFields = { getLocalizedString: (key) => key === "conferenceName" ? "宿主会议名称" : key };
+      const layout = dialogLayout(data);
+      const text = JSON.stringify(layout);
+      for (const label of ["访问时间", "宿主会议名称", "文库编目", "地点", "其他信息", "Zotero（按 DOI 查找）"]) expect(text).to.include(label);
+      for (const key of ["accessDate", "conferenceName", "libraryCatalog", "futureInternalKey", "zotero-search"]) expect(text).not.to.include(key);
+      const technical = JSON.stringify(dialogLayout(data, { showTechnicalDetails: true }));
+      expect(technical).to.include("zotero-search");
+    } finally { Zotero.ItemFields = fields; }
   });
 
   it("设置开启后才提供默认折叠的技术详情", function () {
-    const layout = api.buildBatchDialogLayout(previews(), { showTechnicalDetails: true });
+    const layout = dialogLayout(previews(), { showTechnicalDetails: true });
     const detail = layout.children[1].children[1].children[0];
     const source = findByClass(detail, "zmta-detail-source");
     expect(source.children[1].tag).to.equal("details");
@@ -148,21 +167,23 @@ describe("batchConfirmDialog", function () {
     expect(source.children[1].children[1].properties.textContent).to.include("https://book.douban.com/subject/1/");
   });
 
-  it("布局注入作用域样式，并同时提供深浅主题变量", function () {
-    const layout = api.buildBatchDialogLayout(previews());
+  it("布局复用系统主题并保留响应式内容排版", function () {
+    const layout = dialogLayout(previews());
     const style = layout.children.find((node) => node.tag === "style");
     expect(style.tag).to.equal("style");
     expect(style.properties.textContent).to.include("#zmta-batch-review");
-    expect(style.properties.textContent).to.include("prefers-color-scheme: dark");
+    expect(style.properties.textContent).to.include("--zmta-window: Canvas");
+    expect(style.properties.textContent).to.include("--zmta-muted: var(--fill-secondary, var(--zmta-text, CanvasText))");
+    expect(style.properties.textContent).not.to.include("--zmta-muted: GrayText");
     expect(style.properties.textContent).to.include("max-width: 760px");
     expect(style.properties.textContent).to.include("max-height: 600px");
     expect(style.properties.textContent).to.include(".zmta-diff-row");
-    expect(style.properties.textContent).to.include("#zmta-batch-confirm");
+    expect(style.properties.textContent).not.to.match(/button\s*[:{]/);
     expect(style.properties.textContent).not.to.include("line-through");
   });
 
   it("根布局及主从内容区占满 DialogHelper 可用宽度", function () {
-    const layout = api.buildBatchDialogLayout(previews());
+    const layout = dialogLayout(previews());
     const body = layout.children[1];
     expect(layout.styles).to.include({
       width: "100%",
@@ -185,11 +206,11 @@ describe("batchConfirmDialog", function () {
     ];
     const summary = api.summarizeBatchSelections(selections);
     expect(summary).to.deep.equal({ items: 2, fields: 1, creators: 0, attachments: 1, notes: 2 });
-    expect(api.formatBatchSelectionSummary(summary)).to.equal("已选择 2 个条目 · 4 项更新");
+    expect(api.batchSelectionSummaryArgs(summary)).to.deep.equal({ items: 2, ops: 4 });
   });
 
   it("复选框变化后动态刷新实际选中摘要", function () {
-    const layout = api.buildBatchDialogLayout(previews());
+    const layout = dialogLayout(previews());
     const footer = layout.children[2];
     const readyDetail = layout.children[1].children[1].children[0];
     const firstFieldInput = findNode(readyDetail, (node) => node.id === "zmta-batch-field-0-0");
@@ -208,8 +229,8 @@ describe("batchConfirmDialog", function () {
   it("底部更新按钮排除未确认身份，零有效选择时禁用", function () {
     const data = previews();
     data[0].identityReview = { required: true, matchedFields: ["title"], summary: "请核对作品" };
-    const layout = api.buildBatchDialogLayout(data);
-    expect(findNode(layout, (node) => node.id === "zmta-batch-confirm").properties.disabled).to.equal(true);
+    const layout = dialogLayout(data);
+    expect(findNode(layout, (node) => node.id === "zmta-batch-confirm")).to.equal(undefined);
     const checked = new Set(["zmta-batch-field-0-0", "zmta-batch-note-0-0"]);
     const confirm = { disabled: false };
     const summary = {};
@@ -232,58 +253,42 @@ describe("batchConfirmDialog", function () {
   it("展开两侧长文本不会勾选字段，也不将上游文本作为 HTML", function () {
     const data = previews();
     data[0].fields[1] = { field: "abstractNote", local: "本地简介", incoming: '<img src="x" onerror="alert(1)">' + "长文本".repeat(100), defaultChecked: false };
-    const layout = api.buildBatchDialogLayout(data);
+    const layout = dialogLayout(data);
     const row = findNode(layout, (node) => node.id === "zmta-batch-field-0-1-row");
     const input = findNode(row, (node) => node.id === "zmta-batch-field-0-1");
     const incoming = findNode(row, (node) => node.id === "zmta-batch-field-0-1-incoming");
     expect(incoming.properties.textContent).to.equal(data[0].fields[1].incoming);
     expect(incoming.properties.innerHTML).to.equal(undefined);
-    const classes = new Set();
-    const button = { ownerDocument: { getElementById: () => ({ classList: { toggle(name) {
-      if (classes.has(name)) { classes.delete(name); return false; }
-      classes.add(name); return true;
-    } } }) }, setAttribute(name, value) { this[name] = value; } };
-    const expand = findByClass(row, "zmta-expand");
-    expect(expand.attributes["aria-controls"]).to.equal("zmta-batch-field-0-1-local zmta-batch-field-0-1-incoming");
-    expand.listeners[0].listener({ currentTarget: button });
-    expect(button["aria-expanded"]).to.equal("true");
-    expect(button.textContent).to.equal("收起全文");
-    expand.listeners[0].listener({ currentTarget: button });
-    expect(button["aria-expanded"]).to.equal("false");
+    const oldCell = findByClass(row, "zmta-old-value");
+    const newCell = findByClass(row, "zmta-new-value");
+    for (const cell of [oldCell, newCell]) {
+      expect(cell.children[1].tag).to.equal("details");
+      expect(cell.children[1].children[0].tag).to.equal("summary");
+      expect(cell.children[1].listeners).to.equal(undefined);
+    }
     expect(input.properties.checked).to.equal(false);
   });
 
-  it("切换条目只切换可见性，保留原复选框状态", function () {
-    const layout = api.buildBatchDialogLayout(previews());
-    const input = { checked: true };
-    const elements = new Map([["zmta-batch-field-0-1", input]]);
-    for (let index = 0; index < 3; index += 1) {
-      elements.set(`zmta-batch-detail-${index}`, { style: {} });
-      elements.set(`zmta-batch-item-${index}`, { setAttribute(name, value) { this[name] = value; } });
-    }
-    const doc = { getElementById: (id) => elements.get(id) };
-    const tab = findNode(layout, (node) => node.id === "zmta-batch-item-1");
-    tab.listeners[0].listener({ currentTarget: { ownerDocument: doc } });
-    expect(elements.get("zmta-batch-detail-0").style.display).to.equal("none");
-    expect(elements.get("zmta-batch-detail-1").style.display).to.equal("block");
-    expect(elements.get("zmta-batch-item-1")["aria-current"]).to.equal("true");
-    expect(elements.get("zmta-batch-field-0-1")).to.equal(input);
-    expect(input.checked).to.equal(true);
+  it("单条确认省略导航，不生成需要维护的单项按钮列表", function () {
+    const layout = dialogLayout([previews()[0]]);
+    const nav = findNode(layout, n => n.id === "zmta-review-navigation");
+    expect(nav.styles.display).to.equal("none");
+    expect(layout.children[1].attributes["data-single"]).to.equal("true");
   });
 
   it("失败或阻断条目即使带候选也不提供可勾选更新", function () {
     const data = previews();
     data[0].status = "blocked";
-    const layout = api.buildBatchDialogLayout(data);
+    const layout = dialogLayout(data);
     const detail = findNode(layout, (node) => node.id === "zmta-batch-detail-0");
     expect(findNode(detail, (node) => node.tag === "input")).to.equal(undefined);
-    expect(findNode(layout, (node) => node.id === "zmta-batch-confirm").properties.disabled).to.equal(true);
+    expect(findNode(layout, (node) => node.id === "zmta-batch-confirm")).to.equal(undefined);
   });
 
   it("Note 预览移除 HTML 标签并保留可读换行", function () {
     const data = previews();
     data[0].notes[0].content = "<h1>目录</h1><p>第一章<br>第二章</p>";
-    const layout = api.buildBatchDialogLayout(data);
+    const layout = dialogLayout(data);
     const notePreview = findByClass(layout.children[1].children[1].children[0], "zmta-note-preview");
     expect(notePreview.properties.textContent).to.equal("目录\n第一章\n第二章");
   });
@@ -316,7 +321,7 @@ describe("batchConfirmDialog", function () {
       isConflict: true,
       defaultChecked: false,
     };
-    const layout = api.buildBatchDialogLayout(data);
+    const layout = dialogLayout(data);
     const detail = layout.children[1].children[1].children[0];
     const section = sectionByTitle(detail, "作者与贡献者");
     const row = findByClass(section, "zmta-creators-row");
@@ -345,7 +350,7 @@ describe("batchConfirmDialog", function () {
       matchedFields: ["title", "creator"],
       summary: "系统已匹配：title、creator；请确认",
     };
-    const layout = api.buildBatchDialogLayout(data);
+    const layout = dialogLayout(data);
     const identity = layout.children[1].children[1].children[0].children[1];
     expect(identity.classList).to.include("zmta-identity-review");
     expect(identity.children[0].properties.checked).to.equal(false);
@@ -379,7 +384,7 @@ describe("batchConfirmDialog", function () {
         httpStatus: 403,
       },
     }];
-    const detail = api.buildBatchDialogLayout(data, { showTechnicalDetails: true }).children[1].children[1].children[0];
+    const detail = dialogLayout(data, { showTechnicalDetails: true }).children[1].children[1].children[0];
     const source = findByClass(detail, "zmta-detail-source");
     expect(source.children[1].children[1].properties.textContent)
       .to.include("document-fetch：页面获取失败：Unexpected status code 403，HTTP 403");
@@ -392,13 +397,13 @@ describe("batchConfirmDialog", function () {
       reason: "invalid-for-item-type",
       message: "字段“proceedingsTitle”不适用于条目类型 book，已排除",
     }];
-    const detail = api.buildBatchDialogLayout(data).children[1].children[1].children[0];
+    const detail = dialogLayout(data).children[1].children[1].children[0];
     const warning = findByClass(detail, "zmta-excluded-fields");
     expect(warning.classList).to.include("zmta-excluded-fields");
-    expect(warning.children[0].properties.textContent).to.equal("已忽略 1 个不适用字段");
+    expect(warning.children[0].properties.textContent).to.equal("有 1 个字段不适用于这个条目，已保留原内容");
     expect(warning.children).to.have.length(1);
     const technicalWarning = findByClass(
-      api.buildBatchDialogLayout(data, { showTechnicalDetails: true }),
+      dialogLayout(data, { showTechnicalDetails: true }),
       "zmta-excluded-fields",
     );
     expect(technicalWarning.children[1].tag).to.equal("details");
@@ -421,14 +426,15 @@ describe("batchConfirmDialog", function () {
           },
         };
       }
+      addButton(label, id, options) { (this.buttons ||= {})[id] = { label, ...options }; return this; }
       addCell(_row, _col, layout) { this.layout = layout; return this; }
       setDialogData(data) { this.dialogData = data; return this; }
-      open() { findNode(this.layout, (node) => node.id === "zmta-batch-confirm").listeners[0].listener(); }
+      open() { this.buttons["zmta-batch-confirm"].callback(); }
     }
     const originalImport = Zotero.Attachments.importFromURL;
     Zotero.Attachments.importFromURL = () => { importCalls += 1; };
     try {
-      const result = await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog });
+      const result = await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog }, copy);
       expect(result).to.have.length(1);
       expect(result[0].fields.map((field) => field.field)).to.deep.equal(["publisher"]);
       expect(result[0].attachments).to.deep.equal([]);
@@ -443,11 +449,12 @@ describe("batchConfirmDialog", function () {
     let cellFlex;
     class FakeDialog {
       constructor() { this.buttons = {}; this.window = { document: {} }; }
+      addButton(label, id, options) { (this.buttons ||= {})[id] = { label, ...options }; return this; }
       addCell(_row, _column, layout, flex) { cellFlex = flex; this.layout = layout; return this; }
       setDialogData(data) { this.dialogData = data; return this; }
-      open() { findNode(this.layout, (node) => node.id === "zmta-batch-cancel").listeners[0].listener(); }
+      open() { this.buttons["zmta-batch-cancel"].callback(); }
     }
-    await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog });
+    await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog }, copy);
     expect(cellFlex).to.equal(true);
   });
 
@@ -463,15 +470,16 @@ describe("batchConfirmDialog", function () {
           getElementById: (id) => id === "zmta-batch-confirm" ? confirm : id === "zmta-batch-selection-summary" ? summary : null,
         } };
       }
+      addButton(label, id, options) { (this.buttons ||= {})[id] = { label, ...options }; return this; }
       addCell(_row, _column, layout) { this.layout = layout; }
       setDialogData(data) { this.dialogData = data; }
       open() {
         this.dialogData.loadCallback();
         loaded = true;
-        findNode(this.layout, (node) => node.id === "zmta-batch-cancel").listeners[0].listener();
+        this.buttons["zmta-batch-cancel"].callback();
       }
     }
-    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog })).to.equal(null);
+    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog }, copy)).to.equal(null);
     expect(loaded).to.equal(true);
     expect(classes.has("zmta-review-window")).to.equal(true);
     expect(confirm.disabled).to.equal(true);
@@ -481,11 +489,12 @@ describe("batchConfirmDialog", function () {
   it("取消按钮返回 null", async function () {
     class FakeDialog {
       constructor() { this.buttons = {}; this.window = { document: {} }; }
+      addButton(label, id, options) { (this.buttons ||= {})[id] = { label, ...options }; return this; }
       addCell(_row, _column, layout) { this.layout = layout; return this; }
       setDialogData(data) { this.dialogData = data; return this; }
-      open() { findNode(this.layout, (node) => node.id === "zmta-batch-cancel").listeners[0].listener(); }
+      open() { this.buttons["zmta-batch-cancel"].callback(); }
     }
-    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog })).to.equal(null);
+    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog }, copy)).to.equal(null);
   });
 
   it("零选择不会确认，窗口关闭只结算一次取消", async function () {
@@ -493,16 +502,17 @@ describe("batchConfirmDialog", function () {
     let confirmAttempted = false;
     class FakeDialog {
       constructor() { this.window = { document: { getElementById: () => ({ checked: false }) }, close() { closeCalls += 1; } }; }
+      addButton(label, id, options) { (this.buttons ||= {})[id] = { label, ...options }; return this; }
       addCell(_row, _column, layout) { this.layout = layout; }
       setDialogData(data) { this.dialogData = data; }
       open() {
-        findNode(this.layout, (node) => node.id === "zmta-batch-confirm").listeners[0].listener();
+        this.buttons["zmta-batch-confirm"].callback();
         confirmAttempted = true;
         this.dialogData.beforeUnloadCallback();
-        findNode(this.layout, (node) => node.id === "zmta-batch-cancel").listeners[0].listener();
+        this.buttons["zmta-batch-cancel"].callback();
       }
     }
-    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog })).to.equal(null);
+    expect(await api.showBatchConfirmDialog(previews(), { Dialog: FakeDialog }, copy)).to.equal(null);
     expect(confirmAttempted).to.equal(true);
     expect(closeCalls).to.equal(0);
   });
@@ -524,6 +534,7 @@ describe("batchConfirmDialog", function () {
       pending = api.showBatchConfirmDialog(
         data,
         Zotero.zmtaAddon.data.ztoolkit,
+        copy,
         { onOpen: (dialog) => { helper = dialog; } },
       );
       expect(helper).to.be.an("object");
@@ -536,25 +547,25 @@ describe("batchConfirmDialog", function () {
       const confirm = doc.getElementById("zmta-batch-confirm");
       const footer = root.querySelector(".zmta-footer");
       expect(root).not.to.equal(null);
-      expect(root.textContent).to.include("确认候选与本地条目是同一作品");
-      expect(root.textContent).to.include("系统已匹配：标题、作者；缺少强标识");
+      expect(root.textContent).to.include("确认找到的是同一篇文献或同一本书");
+      expect(root.textContent).to.include("已核对标题、作者");
       expect(root.querySelector(".zmta-technical-details")).to.equal(null);
       expect(root.querySelectorAll(".zmta-section")).to.have.length(3);
       expect(root.textContent).not.to.include("Creator");
       expect(root.textContent).not.to.include("Notes");
       expect(doc.documentElement.classList.contains("zmta-review-window")).to.equal(true);
       expect(root.querySelectorAll("thead th")).to.have.length(4);
-      expect(footer.contains(confirm)).to.equal(true);
+      expect(footer.contains(confirm)).to.equal(false);
+      expect(doc.body.contains(confirm)).to.equal(true);
       expect(root.getBoundingClientRect().height).to.be.greaterThan(200);
       expect(root.querySelector(".zmta-detail-pane").getBoundingClientRect().height).to.be.greaterThan(100);
       expect(footer.getBoundingClientRect().bottom).to.be.at.most(helper.window.innerHeight + 1);
       expect(confirm.disabled).to.equal(true);
       const longInput = doc.getElementById("zmta-batch-field-0-2");
       const longRow = doc.getElementById("zmta-batch-field-0-2-row");
-      const expand = longRow.querySelector(".zmta-expand");
-      expand.click();
-      expect(longRow.classList.contains("zmta-expanded")).to.equal(true);
-      expect(expand.getAttribute("aria-expanded")).to.equal("true");
+      const longDetails = longRow.querySelector("details");
+      longDetails.querySelector("summary").click();
+      expect(longDetails.open).to.equal(true);
       expect(longInput.checked).to.equal(false);
       expect(helper.window.getComputedStyle(longRow.querySelector(".zmta-old-value")).textDecorationLine).not.to.include("line-through");
       expect(checkbox.checked).to.equal(false);

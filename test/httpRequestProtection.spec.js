@@ -53,7 +53,10 @@ describe("HTTP 请求保护（fake host/route，零网络零写库）", function
     const next = await resolver.resolveDOI({ item, doi: "10.1000/b" });
     expect(calls).to.deep.equal(["search"]);
     expect(first.attempts).to.have.length(1);
+    expect(first.message).to.include("后续 DOI 查询已停止");
     expect(next.attempts[0].errorCode).to.equal("host-request-stopped");
+    expect(next.message).to.include("未发起 DOI 查询");
+    expect(next.message).to.include("后续 DOI 查询已停止");
   });
   it("一个Web站点被拒绝不妨碍独立DOI获取路线", async function () {
     const { resolver, calls } = setup(403);

@@ -107,11 +107,54 @@ describe("batchRuntime（核心与持久日志接线）", function () {
       });
       expect(second.incompleteCount).to.equal(1);
       expect(alerts).to.have.lengthOf(1);
-      expect(alerts[0]).to.include("1 个未完成批次");
-      expect(alerts[0]).to.include("查看批次状态");
+      expect(alerts[0]).to.include("1 次未完成的更新");
+      expect(alerts[0]).to.include("查看更新记录");
     } finally {
       Zotero.alert = originalAlert;
       api.resetBatchRuntimeForTests();
+    }
+  });
+
+  it("英文环境空批次提示使用工具菜单语言，且不写日志", async function () {
+    const originalLocale = Zotero.locale; const originalAlert = Zotero.alert;
+    const alerts = [];
+    Zotero.locale = "en-US"; Zotero.alert = (_win, title, message) => alerts.push({ title, message });
+    const storage = new api.MemoryBatchJournalStorage();
+    api.resetBatchRuntimeForTests({ storage });
+    try {
+      await api.inspectBatchStatus();
+      expect(alerts[0].title).to.equal("Metadata Update");
+      expect(alerts[0].message).to.include("no update history");
+    } finally { Zotero.locale = originalLocale; Zotero.alert = originalAlert; api.resetBatchRuntimeForTests(); }
+  });
+
+  it("英文重试和撤销提示可读，读取失败不把内部异常直接展示给用户", async function () {
+    const originalLocale = Zotero.locale;
+    const originalAlert = Zotero.alert;
+    const alerts = [];
+    Zotero.locale = "en-US";
+    Zotero.alert = (_win, title, message) => alerts.push({ title, message });
+    try {
+      const storage = new api.MemoryBatchJournalStorage();
+      api.resetBatchRuntimeForTests({ storage });
+      await api.retryLastFailedBatch();
+      await api.rollbackLatestBatch();
+      expect(alerts[0].message).to.include("Nothing has failed since Zotero started");
+      expect(alerts[1].message).to.include("no recent update");
+      expect(await storage.read()).to.equal(null);
+
+      api.resetBatchRuntimeForTests({ storage: {
+        read: async () => { throw new Error("PRIVATE_PATH/internal-error"); },
+        write: async () => { throw new Error("不应写入"); },
+      } });
+      await api.rollbackLatestBatch();
+      expect(alerts[2].message).to.include("The undo did not finish");
+      expect(alerts[2].message).to.not.include("PRIVATE_PATH");
+      await api.retryLastFailedBatch();
+      expect(alerts[3].message).to.include("Retry is disabled");
+      expect(alerts.every(({ title, message }) => title === "Metadata Update" && !/[\u4e00-\u9fff]/.test(message))).to.equal(true);
+    } finally {
+      Zotero.locale = originalLocale; Zotero.alert = originalAlert; api.resetBatchRuntimeForTests();
     }
   });
 
@@ -138,7 +181,7 @@ describe("batchRuntime（核心与持久日志接线）", function () {
     api.resetBatchRuntimeForTests();
   });
 
-  it("查看批次状态只读打开 journal 快照，不触发 storage write", async function () {
+  it("查看更新记录只读打开 journal 快照，不触发 storage write", async function () {
     class CountingStorage extends api.MemoryBatchJournalStorage {
       constructor(value) { super(value); this.writes = 0; }
       async write(value) { this.writes += 1; await super.write(value); }
@@ -206,17 +249,22 @@ describe("batchRuntime（核心与持久日志接线）", function () {
     let dialogInstance;
     class BoundaryDialog {
       constructor() {
-        dialogInstance = this;
+        if (!dialogInstance) dialogInstance = this;
         this.buttons = {};
         this.window = {
           document: { getElementById: () => ({}) },
-          close: () => this.dialogData.beforeUnloadCallback(),
+          close: () => this.dialogData?.beforeUnloadCallback?.(),
         };
       }
-      addCell() { return this; }
+      addCell(_r, _c, layout) { this.layout = layout; return this; }
       addButton(_label, id, options) { this.buttons[id] = options; return this; }
       setDialogData(data) { this.dialogData = data; return this; }
-      open() {}
+      open() {
+        if (this.layout?.id === "zmta-workflow-result") {
+          const find = node => node.id === "zmta-result-done" ? node : (node.children || []).map(find).find(Boolean);
+          find(this.layout).listeners[0].listener();
+        }
+      }
     }
     const storage = new api.MemoryBatchJournalStorage();
     const selection = { itemID: 1, itemKey: "A", fields: [], attachments: [], notes: [] };
@@ -399,7 +447,7 @@ describe("batchRuntime（核心与持久日志接线）", function () {
         },
       });
       expect(await api.rollbackLatestBatch()).to.equal(null);
-      expect(alerts.pop()).to.include("没有可撤销");
+      expect(alerts.pop()).to.include("没有可以撤销");
 
       api.resetBatchRuntimeForTests({
         fileHost: {
@@ -412,7 +460,9 @@ describe("batchRuntime（核心与持久日志接线）", function () {
         },
       });
       expect(await api.rollbackLatestBatch()).to.equal(null);
-      expect(alerts.pop()).to.include("磁盘读取失败");
+      const readAlert = alerts.pop();
+      expect(readAlert).to.include("撤销没完成");
+      expect(readAlert).to.not.include("磁盘读取失败");
 
       api.resetBatchRuntimeForTests({
         fileHost: {
@@ -426,7 +476,7 @@ describe("batchRuntime（核心与持久日志接线）", function () {
       });
       expect(await api.rollbackLatestBatch()).to.equal(null);
       const decodeAlert = alerts.pop();
-      expect(decodeAlert).to.include("撤销失败");
+      expect(decodeAlert).to.include("撤销没完成");
       expect(decodeAlert).to.not.include("没有可撤销");
     } finally {
       Zotero.alert = originalAlert;

@@ -1,8 +1,8 @@
 // Addon 实例（参考 template src/addon.ts，最小化）
-import hooks, { buildBatchMenuEntries, canReviewBatchItems, canUseDOIRoute, resolveBatchMenuItems } from "./hooks";
+import hooks, { buildBatchMenuEntries, buildToolsMenuEntries, canReviewBatchItems, canUseDOIRoute, resolveBatchMenuItems } from "./hooks";
 import { diffFields } from "./modules/metadataSource";
 import { preflightBatch, preflightDOIBatch, applyBatch, retryFailedBatch, buildFieldCandidates, buildAttachmentCandidates, buildNoteCandidates, isSameDoubanBook } from "./modules/batchSyncUpdate";
-import { summarizeBatchPreviews, summarizeBatchSelections, formatBatchSelectionSummary, getBatchFieldDefaultChecked, buildBatchDialogLayout, collectBatchSelections, getBatchDialogOptions, showBatchConfirmDialog } from "./modules/batchConfirmDialog";
+import { summarizeBatchPreviews, summarizeBatchSelections, batchSelectionSummaryArgs, getBatchFieldDefaultChecked, buildBatchDialogLayout, collectBatchSelections, getBatchDialogOptions, showBatchConfirmDialog, STATUS_MESSAGE_IDS, BATCH_REVIEW_COPY_IDS } from "./modules/batchConfirmDialog";
 import { BatchJournal, MemoryBatchJournalStorage } from "./modules/batchJournal";
 import {
   buildBatchStatusDialogLayout,
@@ -12,6 +12,7 @@ import {
   getBatchStatusLabel,
   showBatchStatusDialog,
   summarizeBatchStatus,
+  BATCH_STATUS_COPY_IDS,
 } from "./modules/batchStatusDialog";
 import {
   createJournalCallback,
@@ -41,11 +42,14 @@ import { ATTEMPT_OUTCOMES, ROUTE_IDS, classifyAttemptOutcome, createAttemptDiagn
 import { BatchPreflightCancelledError, PREFLIGHT_PROGRESS_STAGES } from "./modules/batchTypes";
 import { getReviewSelectionDefaults } from "./modules/reviewSelectionDefaults";
 import { getWorkflowActivity, subscribeWorkflowActivity, tryAcquireWorkflowActivity } from "./modules/workflowActivity";
+import { createDialogCopy, staticDialogCopy } from "./modules/dialogCopy";
+import { EXECUTION_COPY_IDS, RESULT_COPY_IDS, UNDO_COPY_IDS } from "./modules/workflowDialogs";
 import {
   buildBatchPreflightDialogLayout,
   getBatchPreflightDialogOptions,
   openBatchPreflightDialog,
   reduceBatchPreflightViewState,
+  BATCH_PREFLIGHT_COPY_IDS,
 } from "./modules/batchPreflightDialog";
 
 declare const __testBuild__: boolean;
@@ -67,7 +71,11 @@ class Addon {
     isSameDoubanBook: typeof isSameDoubanBook;
     summarizeBatchPreviews: typeof summarizeBatchPreviews;
     summarizeBatchSelections: typeof summarizeBatchSelections;
-    formatBatchSelectionSummary: typeof formatBatchSelectionSummary;
+    batchSelectionSummaryArgs: typeof batchSelectionSummaryArgs;
+    STATUS_MESSAGE_IDS: typeof STATUS_MESSAGE_IDS;
+    BATCH_REVIEW_COPY_IDS: typeof BATCH_REVIEW_COPY_IDS;
+    createDialogCopy: typeof createDialogCopy;
+    staticDialogCopy: typeof staticDialogCopy;
     getBatchFieldDefaultChecked: typeof getBatchFieldDefaultChecked;
     buildBatchDialogLayout: typeof buildBatchDialogLayout;
     collectBatchSelections: typeof collectBatchSelections;
@@ -86,6 +94,7 @@ class Addon {
     initializeBatchRuntimeState: typeof initializeBatchRuntimeState;
     inspectBatchStatus: typeof inspectBatchStatus;
     buildBatchMenuEntries: typeof buildBatchMenuEntries;
+    buildToolsMenuEntries: typeof buildToolsMenuEntries;
     resolveBatchMenuItems: typeof resolveBatchMenuItems;
     canReviewBatchItems: typeof canReviewBatchItems;
     canUseDOIRoute: typeof canUseDOIRoute;
@@ -109,6 +118,11 @@ class Addon {
     normalizeDOI: typeof normalizeDOI;
     BatchPreflightCancelledError: typeof BatchPreflightCancelledError;
     PREFLIGHT_PROGRESS_STAGES: typeof PREFLIGHT_PROGRESS_STAGES;
+    BATCH_PREFLIGHT_COPY_IDS: typeof BATCH_PREFLIGHT_COPY_IDS;
+    BATCH_STATUS_COPY_IDS: typeof BATCH_STATUS_COPY_IDS;
+    EXECUTION_COPY_IDS: typeof EXECUTION_COPY_IDS;
+    UNDO_COPY_IDS: typeof UNDO_COPY_IDS;
+    RESULT_COPY_IDS: typeof RESULT_COPY_IDS;
     buildBatchPreflightDialogLayout: typeof buildBatchPreflightDialogLayout;
     getBatchPreflightDialogOptions: typeof getBatchPreflightDialogOptions;
     openBatchPreflightDialog: typeof openBatchPreflightDialog;
@@ -161,7 +175,11 @@ class Addon {
       isSameDoubanBook,
       summarizeBatchPreviews,
       summarizeBatchSelections,
-      formatBatchSelectionSummary,
+      batchSelectionSummaryArgs,
+      STATUS_MESSAGE_IDS,
+      BATCH_REVIEW_COPY_IDS,
+      createDialogCopy,
+      staticDialogCopy,
       getBatchFieldDefaultChecked,
       buildBatchDialogLayout,
       collectBatchSelections,
@@ -180,6 +198,7 @@ class Addon {
       initializeBatchRuntimeState,
       inspectBatchStatus,
       buildBatchMenuEntries,
+      buildToolsMenuEntries,
       resolveBatchMenuItems,
       canReviewBatchItems,
       canUseDOIRoute,
@@ -203,6 +222,11 @@ class Addon {
       normalizeDOI,
       BatchPreflightCancelledError,
       PREFLIGHT_PROGRESS_STAGES,
+      BATCH_PREFLIGHT_COPY_IDS,
+      BATCH_STATUS_COPY_IDS,
+      EXECUTION_COPY_IDS,
+      UNDO_COPY_IDS,
+      RESULT_COPY_IDS,
       buildBatchPreflightDialogLayout,
       getBatchPreflightDialogOptions,
       openBatchPreflightDialog,

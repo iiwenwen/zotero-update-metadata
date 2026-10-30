@@ -71,8 +71,23 @@ describe("workflowActivity（公共入口占用）", function () {
     expect(await api.runDOIBatchWorkflow([], { Dialog: ForbiddenDialog })).to.equal(null);
     expect(await api.retryLastFailedBatch()).to.equal(null);
     expect(await api.rollbackLatestBatch()).to.equal(null);
-    expect(alerts.slice(-4).every((message) => message.includes("正在进行"))).to.equal(true);
+    expect(alerts.slice(-4).every((message) => message.includes("还没结束"))).to.equal(true);
   }
+
+  it("英文环境四个占用入口拒绝并说明原因，不创建窗口或写日志", async function () {
+    const originalLocale = Zotero.locale;
+    Zotero.locale = "en-US";
+    const release = api.tryAcquireWorkflowActivity("reviewing");
+    class ForbiddenDialog { constructor() { throw new Error("不得创建窗口"); } }
+    try {
+      expect(await api.runBatchWorkflow([], { Dialog: ForbiddenDialog })).to.equal(null);
+      expect(await api.runDOIBatchWorkflow([], { Dialog: ForbiddenDialog })).to.equal(null);
+      expect(await api.retryLastFailedBatch()).to.equal(null);
+      expect(await api.rollbackLatestBatch()).to.equal(null);
+      expect(alerts).to.have.lengthOf(4);
+      expect(alerts.every((message) => message.includes("still running") && !/[\u4e00-\u9fff]/.test(message))).to.equal(true);
+    } finally { release(); Zotero.locale = originalLocale; }
+  });
 
   for (const route of ["runBatchWorkflow", "runDOIBatchWorkflow"]) {
     it(`${route} 在首次 await 前取得占用，阻止菜单／侧栏／DOI／重试／撤销交错`, async function () {
@@ -85,7 +100,7 @@ describe("workflowActivity（公共入口占用）", function () {
         api.runBatchWorkflow([], { Dialog }), api.runDOIBatchWorkflow([], { Dialog }),
         api.retryLastFailedBatch(), api.rollbackLatestBatch(),
       ];
-      expect(alerts.filter((message) => message.includes("正在进行"))).to.have.length(4);
+      expect(alerts.filter((message) => message.includes("还没结束"))).to.have.length(4);
       expect(await Promise.all(attempts)).to.deep.equal([null, null, null, null]);
       expect(await pending).to.equal(null);
       expect(await storage.read()).to.equal(null);
@@ -105,7 +120,7 @@ describe("workflowActivity（公共入口占用）", function () {
       expect(api.getWorkflowActivity()).to.equal("reviewing");
       await expectAllBusy();
       expect(await api.inspectBatchStatus()).to.equal(null);
-      expect(alerts.at(-1)).to.include("没有可查看");
+      expect(alerts.at(-1)).to.include("还没有更新记录");
       expect(api.getWorkflowActivity()).to.equal("reviewing");
     } finally { dialog.dialogData.beforeUnloadCallback(); await pending; }
     expect(await storage.read()).to.equal(null);
@@ -148,7 +163,8 @@ describe("workflowActivity（公共入口占用）", function () {
     const refreshGate = deferred();
     const refreshing = deferred();
     let calls = 0;
-    api.resetBatchRuntimeForTests({ journal: {
+    api.resetBatchRuntimeForTests({ confirmUndo: async () => true, journal: {
+      getLatestUndoableBatch: async () => ({ batchId: "old", items: [] }),
       rollbackLatest: async () => { calls += 1; await gate.promise; throw new Error("回退失败"); },
       getInspectableBatches: async () => { refreshing.resolve(); await refreshGate.promise; return []; },
     } });
@@ -181,6 +197,50 @@ describe("workflowActivity（公共入口占用）", function () {
         expect(api.getWorkflowActivity()).to.equal("idle");
         expect(await storage.read()).to.equal(null);
       }
+    }
+  });
+
+  it("来源不返回时反复取消仍释放入口，旧响应不能解锁新任务或打开审核", async function () {
+    const originalHTTP = Zotero.HTTP;
+    const gates = [deferred(), deferred(), deferred()];
+    const started = [deferred(), deferred(), deferred()];
+    const dialogs = [];
+    const storage = new api.MemoryBatchJournalStorage();
+    api.resetBatchRuntimeForTests({ storage });
+    class RememberDialog extends Dialog { constructor() { super(); dialogs.push(this); } }
+    let calls = 0;
+    Zotero.HTTP = { ...originalHTTP, processDocuments: () => {
+      const index = calls++; started[index].resolve(); return gates[index].promise;
+    } };
+    const sourceItem = { ...item, getField: field => field === "url" ? "https://book.douban.com/subject/1/" : "" };
+    const waitForCancel = pending => Promise.race([pending,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("取消后入口仍被占用")), 100))]);
+    let pending;
+    try {
+      for (let index = 0; index < 3; index++) {
+        pending = api.runBatchWorkflow([sourceItem], { Dialog: RememberDialog });
+        await started[index].promise;
+        expect(api.getWorkflowActivity()).to.equal("reviewing");
+        if (index) {
+          gates[index - 1].resolve([]);
+          await new Promise(resolve => setTimeout(resolve, 0));
+          expect(api.getWorkflowActivity()).to.equal("reviewing");
+        }
+        const dialog = dialogs.at(-1);
+        if (index === 2) dialog.window.close();
+        else dialog.buttons["zmta-preflight-cancel"].callback();
+        expect(await waitForCancel(pending)).to.equal(null);
+        expect(api.getWorkflowActivity()).to.equal("idle");
+        expect(await storage.read()).to.equal(null);
+      }
+      gates[2].resolve([]); await new Promise(resolve => setTimeout(resolve, 0));
+      expect(dialogs).to.have.lengthOf(3);
+      expect(dialogs.every(dialog => dialog.layout.id === "zmta-batch-preflight")).to.equal(true);
+      expect(api.getWorkflowActivity()).to.equal("idle");
+    } finally {
+      for (const gate of gates) gate.resolve([]);
+      await pending;
+      Zotero.HTTP = originalHTTP;
     }
   });
 

@@ -149,6 +149,8 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       );
       const resolved = await resolver.resolve({ item, url: "https://example.test/paper", doi: "10.1000/test" });
       expect(resolved.terminalOutcome).to.equal("blocked");
+      expect(resolved.message).to.include("未进行更新");
+      expect(resolved.message).not.to.include(outcome);
       expect(calls.map((call) => call.id)).to.deep.equal(["url.web"]);
     });
   }
@@ -158,6 +160,8 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       const { resolver, calls } = setup([], [failure("doi.search", 1, outcome)]);
       const resolved = await resolver.resolve({ item, doi: "10.1000/test" });
       expect(resolved.terminalOutcome).to.equal("blocked");
+      expect(resolved.message).to.include("未进行更新");
+      expect(resolved.message).not.to.include(outcome);
       expect(resolved.candidate).to.equal(null);
       expect(calls).to.have.length(1);
     }
@@ -168,6 +172,81 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       const { resolver } = setup([], [failure("doi.search", 1, outcome)]);
       const resolved = await resolver.resolve({ item, doi: "10.1000/test" });
       expect(resolved.terminalOutcome).to.equal("blocked");
+    }
+  });
+
+  it("英文环境的阻断消息可理解且保留结构化证据", async function () {
+    const calls = [];
+    const resolver = createResolver({
+      urlWebRoute: fakeRoute("url.web", [failure("url.web", 1, "identity-evidence-missing")], calls),
+      doiSearchRoute: fakeRoute("doi.search", [], calls), locale: "en-US",
+    });
+    const resolved = await resolver.resolve({ item, url: "https://example.test/paper" });
+    expect(resolved.message).to.include("Nothing was updated");
+    expect(resolved.message).not.to.include("identity-evidence-missing");
+    expect(resolved.attempts[0].outcome).to.equal("identity-evidence-missing");
+  });
+
+  it("英文 DOI 限流区分首次失败和后续未发起的请求", async function () {
+    const calls = [];
+    const resolver = createResolver({
+      urlWebRoute: fakeRoute("url.web", [], calls),
+      doiSearchRoute: fakeRoute("doi.search", [failure("doi.search", 1, "fetch-failed", false, {
+        diagnostic: { stage: "route", message: "limited", httpStatus: 429 },
+      })], calls), locale: "en-US",
+    });
+    const first = await resolver.resolveDOI({ item, doi: "10.1000/a" });
+    const second = await resolver.resolveDOI({ item, doi: "10.1000/b" });
+    expect(first.message).to.include("later DOI searches in this batch have stopped");
+    expect(second.message).to.include("DOI search was not sent");
+    expect(calls).to.have.length(1);
+  });
+
+  it("先请求Web再跳过DOI时，停止提示只指DOI查询", async function () {
+    for (const locale of ["zh-CN", "en-US"]) {
+      const calls = [];
+      const resolver = createResolver({
+        urlWebRoute: fakeRoute("url.web", [failure("url.web", 1, "no-result")], calls),
+        doiSearchRoute: fakeRoute("doi.search", [failure("doi.search", 1, "fetch-failed", false, {
+          diagnostic: { stage: "route", message: "limited", httpStatus: 429 },
+        })], calls), locale,
+      });
+      await resolver.resolveDOI({ item, doi: "10.1000/a" });
+      const result = await resolver.resolve({ item, url: "https://example.test/item", doi: "10.1000/b" });
+      expect(calls.map(call => call.id)).to.deep.equal(["doi.search", "url.web"]);
+      expect(result.message).to.include(locale === "zh-CN" ? "未发起 DOI 查询" : "DOI search was not sent");
+    }
+  });
+
+  it("获取失败不向用户泄露技术异常，限流等待提示仍可操作", async function () {
+    const raw = setup([failure("url.web", 1, "fetch-failed", false, {
+      diagnostic: { stage: "route", message: "internal translator stack" },
+    })], []);
+    const result = await raw.resolver.resolve({ item, url: "https://example.test/paper" });
+    expect(result.message).to.include("无法获取来源信息");
+    expect(result.message).not.to.include("internal translator stack");
+    expect(result.attempts[0].diagnostic.message).to.equal("internal translator stack");
+    const limited = setup([failure("url.web", 1, "fetch-failed", false, {
+      diagnostic: { stage: "route", message: "raw error", httpStatus: 429, retryAfterMs: 3000 },
+    })], []);
+    const throttled = await limited.resolver.resolve({ item, url: "https://example.test/paper" });
+    expect(throttled.message).to.include("3 秒");
+    expect(throttled.message).not.to.include("raw error");
+  });
+
+  it("页面解析缺标题不误报网络故障，保留原始诊断但不展示技术异常", async function () {
+    for (const locale of ["zh-CN", "en-US"]) {
+      const resolver = createResolver({
+        urlWebRoute: fakeRoute("url.web", [failure("url.web", 1, "fetch-failed", false, {
+          diagnostic: { stage: "translator-run", message: "Translator 执行失败：No title specified for item" },
+        })], []),
+        doiSearchRoute: fakeRoute("doi.search", [], []), locale,
+      });
+      const result = await resolver.resolve({ item, url: "https://example.test/book" });
+      expect(result.message).to.include(locale === "zh-CN" ? "没有识别出标题" : "title could not be read");
+      expect(result.message).not.to.include("No title specified");
+      expect(result.message).not.to.include(locale === "zh-CN" ? "检查网络" : "Check your network");
+      expect(result.attempts[0].diagnostic.message).to.include("No title specified");
     }
   });
 

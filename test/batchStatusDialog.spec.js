@@ -1,5 +1,6 @@
-// 批次状态窗口的纯布局与 fake Dialog/DOM 测试；由主 Agent 接入 addon.api 后运行。
+// 更新记录窗口的纯布局与 fake Dialog/DOM 测试；由主 Agent 接入 addon.api 后运行。
 const { expect } = require("chai");
+const { loadDialogCopy, renderCopy } = require("./helpers/copy.cjs");
 
 describe("batchStatusDialog", function () {
   let api;
@@ -37,7 +38,7 @@ describe("batchStatusDialog", function () {
       items: [{
         itemID: 2,
         itemKey: "ITEM2",
-        title: "发生回滚冲突的条目",
+        title: "发生无法完全撤销的条目",
         source: { providerId: "zotero", routeId: "doi.search", identifiers: [{ type: "DOI", value: "10.1/example" }] },
         operations: [
           { operationId: "field:date", kind: "field", label: "date", before: "2025", after: "2026", status: "rollback-conflict", message: "当前值已被人工修改" },
@@ -46,6 +47,10 @@ describe("batchStatusDialog", function () {
       }],
     },
   ];
+
+  let copy;
+  /** 生产布局 + 挂载后填充，等价于真实窗口显示出来的样子。 */
+  const statusLayout = (batches, options) => renderCopy(api.buildBatchStatusDialogLayout(batches, copy, options), copy);
 
   function textOf(node) {
     if (!node || typeof node !== "object") return "";
@@ -68,13 +73,14 @@ describe("batchStatusDialog", function () {
 
   before(function () {
     api = Zotero.zmtaAddon.api;
+    ({ copy } = loadDialogCopy());
   });
 
   it("稳定映射批次与操作状态标签", function () {
-    expect(api.getBatchStatusLabel("running")).to.equal("进行中");
-    expect(api.getBatchStatusLabel("rollback-partial")).to.equal("部分回滚");
-    expect(api.getBatchOperationStatusLabel("failed")).to.equal("失败");
-    expect(api.getBatchOperationStatusLabel("rollback-conflict")).to.equal("回滚冲突");
+    expect(api.getBatchStatusLabel("running", copy)).to.equal("进行中");
+    expect(api.getBatchStatusLabel("rollback-partial", copy)).to.equal("部分撤销");
+    expect(api.getBatchOperationStatusLabel("failed", copy)).to.equal("失败");
+    expect(api.getBatchOperationStatusLabel("rollback-conflict", copy)).to.equal("无法完全撤销");
   });
 
   it("汇总多个批次、条目、四类操作及异常状态", function () {
@@ -93,63 +99,80 @@ describe("batchStatusDialog", function () {
 
   it("来源摘要默认只展示来源名称，技术入口不展示 sourceId 或 sourceURL", function () {
     const data = batches();
-    expect(api.formatBatchInspectionSource(data[0].items[0].source)).to.equal("来源：豆瓣读书");
-    expect(api.formatBatchInspectionSource(undefined)).to.equal("来源：未知");
-    const serialized = JSON.stringify(api.buildBatchStatusDialogLayout(data));
+    expect(api.formatBatchInspectionSource(data[0].items[0].source)).to.equal("豆瓣读书");
+    expect(api.formatBatchInspectionSource(undefined)).to.equal("未知");
+    const serialized = JSON.stringify(statusLayout(data));
     expect(serialized).not.to.include("secret.example.test");
     expect(serialized).not.to.include("sourceURL");
-    expect(nodesByClass(api.buildBatchStatusDialogLayout(data), "zmta-technical-details")).to.deep.equal([]);
+    expect(nodesByClass(statusLayout(data), "zmta-technical-details")).to.deep.equal([]);
     expect(serialized).not.to.include("10.1/example");
   });
 
   it("设置开启后展示折叠技术详情，并保留来源、状态、before/after 与错误", function () {
-    const layout = api.buildBatchStatusDialogLayout(batches(), { showTechnicalDetails: true });
+    const layout = statusLayout(batches(), { showTechnicalDetails: true });
     expect(layout.id).to.equal("zmta-batch-status");
-    expect(layout.children[0].children[0].properties.textContent).to.equal("2 个批次 · 1 个未完成");
+    expect(layout.children[0].children.find(node => node.tag === "strong").properties.textContent).to.equal("2 次更新 · 1 次尚未结束");
     const workspace = layout.children[1];
-    expect(workspace.children[0].children).to.have.length(2);
+    expect(workspace.children[0].id).to.equal("zmta-history-navigation");
     expect(workspace.children[1].children).to.have.length(2);
     const allText = textOf(layout);
     expect(allText).to.include("最近一次更新");
-    expect(allText).to.include("发生回滚冲突的条目");
+    expect(allText).to.include("发生无法完全撤销的条目");
     expect(allText).to.include("来源：Zotero");
     expect(allText).to.include("获取方式：DOI 检索");
     expect(allText).to.include("旧标题 → 新标题");
     expect(allText).to.include("1. 旧 作者 · 作者 → 1. 翻译组 · 译者");
     expect(allText).to.include("下载失败");
-    expect(allText).to.include("回滚冲突");
+    expect(allText).to.include("无法完全撤销");
     expect(inputsOf(layout)).to.deep.equal([]);
     expect(workspace.children[1].styles.overflow).to.equal("auto");
     expect(layout.children[2].properties.textContent).to.include("overflow-wrap: anywhere");
-    expect(layout.children[2].properties.textContent).to.include("max-width: 700px");
+    expect(layout.children[2].properties.textContent).to.include("max-width: 760px");
   });
 
   it("空状态仍返回完整只读布局", function () {
-    const layout = api.buildBatchStatusDialogLayout([]);
-    expect(textOf(layout)).to.include("没有可查看的批次");
+    const layout = statusLayout([]);
+    expect(textOf(layout)).to.include("还没有更新记录");
     expect(textOf(layout)).to.include("没有更新记录");
-    expect(textOf(layout)).to.include("无批次");
-    expect(textOf(layout)).to.include("没有批次详情");
+    expect(textOf(layout)).to.include("暂无更新详情");
     expect(inputsOf(layout)).to.deep.equal([]);
   });
 
-  it("点击批次只切换 aria-selected 与详情显示", function () {
-    const layout = api.buildBatchStatusDialogLayout(batches());
-    const tabs = layout.children[1].children[0].children;
-    const records = new Map();
-    for (let index = 0; index < 2; index += 1) {
-      records.set(`zmta-batch-status-tab-${index}`, {
-        selected: String(index === 0),
-        setAttribute(_name, value) { this.selected = value; },
-      });
-      records.set(`zmta-batch-status-detail-${index}`, { style: { display: index === 0 ? "block" : "none" } });
-    }
-    const doc = { getElementById: (id) => records.get(id) };
-    tabs[1].listeners[0].listener({ currentTarget: { ownerDocument: doc } });
-    expect(records.get("zmta-batch-status-tab-0").selected).to.equal("false");
-    expect(records.get("zmta-batch-status-tab-1").selected).to.equal("true");
-    expect(records.get("zmta-batch-status-detail-0").style.display).to.equal("none");
-    expect(records.get("zmta-batch-status-detail-1").style.display).to.equal("block");
+  it("记录时间显示本地时区，原始UTC时间仅保留在技术详情", function () {
+    const data = batches();
+    const localTime = new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit",
+      minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "short",
+    }).format(new Date(data[1].completedAt));
+    const normal = textOf(statusLayout(data));
+    expect(normal).to.include(localTime);
+    expect(normal).not.to.include(data[1].completedAt);
+    expect(normal).to.include("完成：尚未结束");
+    expect(textOf(statusLayout(data, { showTechnicalDetails: true })))
+      .to.include(data[1].completedAt);
+    data[1].createdAt = "broken";
+    expect(textOf(statusLayout(data))).to.include("开始：时间未知");
+  });
+
+  it("重复条目按条目记录计数，失败记录不会出现零次未完成的误导文案", function () {
+    const data = batches();
+    const copies = [0, 1, 2].map(index => ({ ...data[1], batchId: `copy-${index}`, status: index === 1 ? "failed" : "completed" }));
+    const text = textOf(statusLayout(copies));
+    expect(text).to.include("3 次更新");
+    expect(text).to.include("3 条条目记录");
+    expect(text).not.to.include("0 次未完成");
+  });
+
+  it("原生导航以任务ID切换详情并释放监听", async function () {
+    const { Dialog } = require("./uiDialog.cjs");
+    const pending = api.showBatchStatusDialog(batches(), { Dialog }, copy);
+    const dialog = Dialog.instances.at(-1);
+    const select = dialog.nodes.get("zmta-history-navigation-select");
+    select.value = "batch-rollback"; select.emit("change");
+    expect(dialog.nodes.get("zmta-batch-status-detail-0").style.display).to.equal("none");
+    expect(dialog.nodes.get("zmta-batch-status-detail-1").style.display).to.equal("block");
+    dialog.click("zmta-batch-status-close"); await pending;
+    expect(select.removed).to.equal(true); expect(dialog.mediaListeners.size).to.equal(0);
   });
 
   it("Dialog 只有关闭按钮，内容 cell 启用 flex，关闭与 beforeUnload 幂等", async function () {
@@ -162,11 +185,11 @@ describe("batchStatusDialog", function () {
       setDialogData(data) { this.dialogData = data; return this; }
       open(title, options) { this.title = title; this.options = options; }
     }
-    const pending = api.showBatchStatusDialog(batches(), { Dialog: FakeDialog }).then(() => { resolveCalls += 1; });
+    const pending = api.showBatchStatusDialog(batches(), { Dialog: FakeDialog }, copy).then(() => { resolveCalls += 1; });
     expect(Object.keys(instance.buttons)).to.deep.equal(["zmta-batch-status-close"]);
-    expect(instance.buttons["zmta-batch-status-close"].label).to.equal("关闭");
+    expect(instance.buttons["zmta-batch-status-close"].label).to.equal("返回");
     expect(instance.flex).to.equal(true);
-    expect(instance.title).to.equal("批次状态");
+    expect(instance.title).to.equal("更新记录");
     expect(instance.options).to.deep.equal(api.getBatchStatusDialogOptions());
     instance.buttons["zmta-batch-status-close"].callback();
     instance.dialogData.beforeUnloadCallback();
@@ -185,6 +208,7 @@ describe("batchStatusDialog", function () {
       pending = api.showBatchStatusDialog(
         batches(),
         Zotero.zmtaAddon.data.ztoolkit,
+        copy,
         { onOpen: (dialog) => { helper = dialog; } },
       );
       expect(helper).to.be.an("object");
@@ -198,17 +222,17 @@ describe("batchStatusDialog", function () {
       expect(sidebar).not.to.equal(null);
       expect(detail).not.to.equal(null);
       expect(root.textContent).to.include("最近一次更新");
-      expect(root.textContent).to.include("发生回滚冲突的条目");
+      expect(root.textContent).to.include("发生无法完全撤销的条目");
       expect(root.textContent).not.to.include("secret.example.test");
       expect(root.querySelector(".zmta-technical-details")).to.equal(null);
       expect(helper.window.getComputedStyle(sidebar).overflowY).to.match(/auto|scroll/);
       expect(helper.window.getComputedStyle(detail).overflowY).to.match(/auto|scroll/);
-      const tabs = [...root.querySelectorAll(".zmta-status-tab")];
-      for (let index = 0; index < tabs.length; index += 1) {
-        const bounds = tabs[index].getBoundingClientRect();
-        expect(tabs[index].lastElementChild.getBoundingClientRect().bottom).to.be.at.most(bounds.bottom);
-        if (tabs[index + 1]) expect(bounds.bottom).to.be.at.most(tabs[index + 1].getBoundingClientRect().top);
-      }
+      const select = doc.getElementById("zmta-history-navigation-select");
+      expect(select).not.to.equal(null);
+      expect(select.options.length).to.equal(2);
+      select.value = "batch-rollback";
+      select.dispatchEvent(new helper.window.Event("change", { bubbles: true }));
+      expect(doc.getElementById("zmta-batch-status-detail-1").style.display).to.equal("block");
 
       doc.getElementById("zmta-batch-status-close").click();
       await pending;

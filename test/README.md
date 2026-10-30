@@ -6,6 +6,10 @@
 
 `npm test`会启动隔离Zotero，不要与现有测试客户端并开；真实书目写入需要另行明确授权。日常用例不得写正式库。已有附件、笔记和人工修改均须保留；合成数据按精确归属清理。
 
+宿主测试前置保护会拒绝清空任何非空的 `.scaffold/test/profile` 或 `data`，不依赖手工样本标记。保留的手工库用 `npm run test:manual` 复用；该命令要求已备好测试库和插件，不负责首次建库或补种样本。保护回归用 `node --test test/hostTestDataGuard.test.mjs`，只在临时目录检查。
+
+手工测试唯一活动库为项目内 `.scaffold/test/{profile,data}`；本地 `.env` 的 `ZOTERO_PLUGIN_PROFILE_PATH`、`ZOTERO_PLUGIN_DATA_DIR` 必须与此一致，入口会拒绝配置漂移或并开客户端。旧库已迁入“原测试库（迁入保留）”分类；原件留在 `.scaffold/test/legacy-source/`，迁移映射和核对记录在 `.scaffold/test/library-migration/`。归档profile不作为启动入口；测试库、原件和附件均由 `.gitignore` 排除，不进入版本库。
+
 `npm start`默认离线Mock，不访问上游。可在测试条目Extra写`ZMTA-MOCK: success`、`rich-success`、`no-result`、`http-403`、`identifier-conflict`、`item-type-conflict`、`version-ambiguous`或`identity-review`选择场景。`rich-success`提供合成附件与笔记候选；确认后仍可能产生真实测试子项。只有`npm run start:live`显式启用真实上游。
 
 完整验证入口和固定安全规则见`CONTRIBUTING.md`；不同版本／不同层次的结果不相加冒充同一轮宿主测试。

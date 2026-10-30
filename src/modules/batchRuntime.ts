@@ -1,3 +1,5 @@
+import { getPluginDialogScope, isPluginDialogScopeActive, restorePluginWindowFocus } from "./dialogLifecycle";
+import { openExecutionDialog, showUndoConfirmation, showWorkflowResult, EXECUTION_COPY_IDS, UNDO_COPY_IDS, RESULT_COPY_IDS, type ExecutionDialog } from "./workflowDialogs";
 import {
   applyBatch,
   BatchLimitError,
@@ -7,9 +9,10 @@ import {
   hasRetryableBatchOperations,
   type BatchOperationEvent,
 } from "./batchSyncUpdate";
-import { showBatchConfirmDialog } from "./batchConfirmDialog";
-import { openBatchPreflightDialog } from "./batchPreflightDialog";
-import { showBatchStatusDialog } from "./batchStatusDialog";
+import { showBatchConfirmDialog, BATCH_REVIEW_COPY_IDS } from "./batchConfirmDialog";
+import { openBatchPreflightDialog, BATCH_PREFLIGHT_COPY_IDS } from "./batchPreflightDialog";
+import { showBatchStatusDialog, BATCH_STATUS_COPY_IDS } from "./batchStatusDialog";
+import { createDialogCopy, type DialogCopy, type MessageId } from "./dialogCopy";
 import {
   BatchJournal,
   type BatchJournalStorage,
@@ -17,20 +20,25 @@ import {
 } from "./batchJournal";
 import {
   BatchPreflightCancelledError,
+  MAX_BATCH_ITEMS,
   type BatchItemPreview,
   type BatchItemSelection,
   type BatchRunResult,
   type BatchRuntimeCapabilities,
+  type BatchJournalRecord,
 } from "./batchTypes";
 import { DefaultZoteroRollbackPort } from "./update/zoteroMutationPort";
 import { selectionSourceEvidence } from "./update/planner";
+import { normalizeDOI } from "./update/resolution";
 import { tryAcquireWorkflowActivity } from "./workflowActivity";
+import { PLUGIN_NAME } from "../config";
+import { localized } from "../utils/locale";
 
 declare const Zotero: any;
+declare const __testBuild__: boolean;
 declare const PathUtils: any;
 declare const IOUtils: any;
 
-const PLUGIN_NAME = "Zotero 元数据更新";
 const JOURNAL_DIR = "zmta-update-metadata";
 const JOURNAL_FILE = "batch-journal.json";
 
@@ -95,6 +103,7 @@ let runtimeCapabilities: BatchRuntimeCapabilities = Object.freeze({
   hasInspectableBatches: false,
 });
 let incompleteAlertShown = false;
+let confirmUndoForTests: ((batch: BatchJournalRecord) => Promise<boolean>) | undefined;
 
 function getJournal(): BatchJournal {
   if (!journal) journal = new BatchJournal(journalStorage || new ZoteroFileBatchJournalStorage());
@@ -133,7 +142,7 @@ export async function refreshBatchRuntimeCapabilities(): Promise<BatchRuntimeCap
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    Zotero.debug(`[zmta-runtime] 批次状态读取失败：${message}`);
+    Zotero.debug(`[zmta-runtime] 更新记录读取失败：${message}`);
     runtimeCapabilities = Object.freeze({
       loaded: true,
       journalError: message,
@@ -150,38 +159,66 @@ export async function initializeBatchRuntimeState(win?: any): Promise<BatchRunti
   const capabilities = await refreshBatchRuntimeCapabilities();
   if (!incompleteAlertShown && !capabilities.journalError && capabilities.incompleteCount > 0) {
     incompleteAlertShown = true;
-    alertUser(win, [
-      `检测到 ${capabilities.incompleteCount} 个未完成批次。`,
-      "插件不会自动继续或撤销；请从“元数据更新 → 查看批次状态”检查，期间撤销入口保持禁用。",
-    ].join("\n"));
+    alertUser(win, localized(
+      `检测到 ${capabilities.incompleteCount} 次未完成的更新。\n插件不会自动继续或撤销；请从“工具 → 查看更新记录”检查，期间撤销入口保持禁用。`,
+      `${capabilities.incompleteCount} unfinished batch(es) detected.\nThe plugin will not automatically resume or undo them. Check Tools → View Update History; undo remains disabled until then.`,
+    ));
   }
   return capabilities;
 }
 
-export async function inspectBatchStatus(win?: any, ztoolkit?: any) {
-  const capabilities = getBatchRuntimeCapabilities();
-  if (capabilities.loaded && capabilities.journalError) {
-    alertUser(win, "批次日志读取失败，无法安全显示批次状态。");
-    return null;
-  }
-  try {
-    const batches = await getJournal().getInspectableBatches();
-    if (batches.length === 0) {
-      alertUser(win, "没有可查看的批次记录。");
-      await refreshBatchRuntimeCapabilities();
-      return null;
+export async function inspectBatchStatus(win?: any, ztoolkit?: any, options: { batchId?: string; returnWindow?: any } = {}) {
+  const dialogScope = getPluginDialogScope();
+  if (!isPluginDialogScopeActive(dialogScope)) return null;
+  let reload = true;
+  let batches: Awaited<ReturnType<BatchJournal["getInspectableBatches"]>> = [];
+  while (reload && isPluginDialogScopeActive(dialogScope)) {
+    reload = false;
+    let error: string | undefined;
+    try {
+      const journal = getJournal();
+      batches = await (journal.getHistoryBatches ? journal.getHistoryBatches() : journal.getInspectableBatches());
+    } catch (cause) {
+      batches = [];
+      error = "暂时无法读取更新记录，请稍后重新读取。";
+      Zotero.debug(`[zmta] 更新记录读取失败：${cause}`);
     }
-    if (!ztoolkit?.Dialog) {
-      alertUser(win, "批次状态窗口当前不可用。");
-      return null;
-    }
-    await showBatchStatusDialog(batches, ztoolkit);
-    return batches;
-  } catch (error) {
     await refreshBatchRuntimeCapabilities();
-    alertUser(win, `批次状态读取失败：${error instanceof Error ? error.message : String(error)}`);
-    return null;
+    if (!isPluginDialogScopeActive(dialogScope)) return null;
+    if (!ztoolkit?.Dialog) {
+      alertUser(win, error || (batches.length ? "暂时打不开更新记录窗口。" : localized("还没有更新记录。", "There is no update history yet.")));
+      return null;
+    }
+    const locatable = new Set<string>();
+    if (win?.ZoteroPane?.selectItem) {
+      for (const item of batches.flatMap(batch => [...batch.items])) {
+        try {
+          const current = await Zotero.Items.getAsync(item.itemID);
+          if (current && current.key === item.itemKey && !current.deleted) locatable.add(item.itemKey);
+        } catch { /* 仍可阅读记录，不允许误定位另一个条目 */ }
+      }
+    }
+    try {
+      const copy = await resolveDialogCopy(win);
+      await showBatchStatusDialog(batches, ztoolkit, copy, {
+        onReloadRequest: () => { reload = true; },
+        onLocate: async (item) => {
+          const current = await Zotero.Items.getAsync(item.itemID);
+          if (!isPluginDialogScopeActive(dialogScope) || !win || win.closed || !current || current.key !== item.itemKey || current.deleted) throw new Error("原窗口或条目已不可用，请保留记录并在文库中核对。");
+          await win.ZoteroPane.selectItem(item.itemID);
+          win.focus?.();
+        },
+      }, { error, initialBatchId: options.batchId, locatableItemKeys: locatable });
+    } catch (cause) {
+      Zotero.debug(`[zmta] 更新记录窗口失败：${cause}`);
+      alertUser(win, "打不开更新记录窗口，请稍后重试。");
+      return null;
+    }
   }
+  let returnWindow = options.returnWindow || win;
+  try { if (returnWindow?.closed) returnWindow = win; } catch { returnWindow = win; }
+  restorePluginWindowFocus(returnWindow, dialogScope);
+  return batches;
 }
 
 function makeBatchId(): string {
@@ -190,7 +227,22 @@ function makeBatchId(): string {
 }
 
 function alertUser(win: any, message: string): void {
-  Zotero.alert(win || Zotero.getMainWindow(), PLUGIN_NAME, message);
+  Zotero.alert(win || Zotero.getMainWindow(), localized(PLUGIN_NAME.zh, PLUGIN_NAME.en), message);
+}
+
+/** 一次工作流只解析一次对话框文案；主窗口的 document.l10n 是唯一来源。 */
+const DIALOG_COPY_IDS: readonly MessageId[] = Object.freeze([
+  ...BATCH_PREFLIGHT_COPY_IDS,
+  ...BATCH_REVIEW_COPY_IDS,
+  ...BATCH_STATUS_COPY_IDS,
+  ...EXECUTION_COPY_IDS,
+  ...UNDO_COPY_IDS,
+  ...RESULT_COPY_IDS,
+]);
+
+function resolveDialogCopy(win?: any): Promise<DialogCopy> {
+  // 只用发起窗口的 l10n：没有窗口时退化成消息 id，绝不猜测另一个窗口。
+  return createDialogCopy(win, DIALOG_COPY_IDS);
 }
 
 function journalItems(
@@ -314,13 +366,13 @@ export function finalJournalStatus(result: BatchRunResult): "completed" | "parti
 function resultMessage(result: BatchRunResult): string {
   const recoveryRequired = result.items.some((item) => item.operations.some((entry) => entry.recoveryRequired));
   return [
-    `批次 ${result.batchId}`,
-    `成功 ${result.applied}`,
-    `部分成功 ${result.partial}`,
-    `跳过 ${result.skipped}`,
-    `失败 ${result.failed}`,
-    recoveryRequired ? "有更新未能安全撤回，请查看批次状态并人工处理，不要重复执行这些操作。" : "",
-    result.items.some(hasRetryableBatchOperations) ? "可从菜单重试其余失败项。" : "",
+    localized("条目信息更新结果", "Update results"),
+    localized(`成功 ${result.applied}`, `Updated ${result.applied}`),
+    localized(`部分完成 ${result.partial}`, `Partly updated ${result.partial}`),
+    localized(`未更新 ${result.skipped}`, `Not updated ${result.skipped}`),
+    localized(`失败 ${result.failed}`, `Failed ${result.failed}`),
+    recoveryRequired ? localized("有些更新没能安全撤回。请查看更新记录并人工处理，不要重复执行这些操作。", "Some changes could not be safely reverted. Check update history and resolve them manually; do not repeat those operations.") : "",
+    result.items.some(hasRetryableBatchOperations) ? localized("可从菜单重试其余失败项。", "Use the menu to retry the remaining failed operations.") : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -328,9 +380,15 @@ async function executeSelections(
   selections: BatchItemSelection[],
   previews: BatchItemPreview[],
   batchId: string,
+  ztoolkit: any,
+  copy: DialogCopy,
 ): Promise<BatchRunResult> {
+  const dialogScope = getPluginDialogScope();
   const batchJournal = getJournal();
+  const progress = ztoolkit?.Dialog ? openExecutionDialog(ztoolkit, selections.length, copy) : null;
+  let completedItems = 0;
   try {
+    if (!isPluginDialogScopeActive(dialogScope)) throw new BatchPreflightCancelledError(0, selections.length);
     await batchJournal.startBatch(batchId, journalItems(selections, previews));
     const evidence = new Map(selections.flatMap((selection) => {
       const source = selectionSourceEvidence(selection);
@@ -338,14 +396,73 @@ async function executeSelections(
     }));
     const result = await applyBatch(selections, {
       batchId,
-      onOperationStatus: createJournalCallback(batchJournal, evidence),
+      onOperationStatus: async (event) => {
+        await createJournalCallback(batchJournal, evidence)(event);
+        progress?.update({ completed: completedItems, total: selections.length, title: previews.find(p => p.itemKey === event.itemKey)?.title,
+          stageId: event.kind === "attachment" ? "dlg-exec-stage-attachment" : event.kind === "note" ? "dlg-exec-stage-note" : "dlg-exec-stage-field" });
+      },
+      onItemComplete: (item, completed, total) => { completedItems = completed; progress?.update({ completed, total, title: item.title, stageId: "dlg-exec-stage-item-done" }); },
     });
     await batchJournal.finalizeBatch(batchId, finalJournalStatus(result));
     retryState = { selections, result };
     return result;
   } finally {
+    progress?.close();
     await refreshBatchRuntimeCapabilities();
   }
+}
+
+async function presentResult(
+  result: BatchRunResult | import("./batchTypes").BatchRollbackResult,
+  win: any,
+  toolkit: any,
+  copy: DialogCopy,
+  undo = false,
+  retry = false,
+): Promise<"done" | "retry"> {
+  if (!toolkit?.Dialog) {
+    if ("applied" in result) alertUser(win, resultMessage(result));
+    else alertUser(win, `已撤销 ${result.rolledBack} 项；保留 ${result.conflicts} 项；失败 ${result.failed} 项`);
+    return "done";
+  }
+  try {
+    return await showWorkflowResult(result, toolkit, { copy, undo, retry,
+      canRetry: !undo && result.items.some(hasRetryableBatchOperations),
+      onRecords: returnWindow => inspectBatchStatus(win, toolkit, { batchId: result.batchId, returnWindow }),
+    });
+  } catch (error) {
+    Zotero.debug(`[zmta] 结果显示失败：${error}`);
+    alertUser(win, "处理已结束，但结果窗口打不开。请从工具菜单查看更新记录，不要重复执行。");
+    return "done";
+  }
+}
+
+async function reviewWithRecovery(items: any[], initial: BatchItemPreview[], toolkit: any, copy: DialogCopy): Promise<{ selections: BatchItemSelection[] | null; previews: BatchItemPreview[] }> {
+  let previews = initial.map(preview => ({ ...preview,
+    ...(preview.status !== "ready" ? { normalizedDOI: preview.normalizedDOI || normalizeItemDOI(items.find(item => item.id === preview.itemID)) } : {}),
+  }));
+  let saved: BatchItemSelection[] | undefined;
+  while (true) {
+    let refresh: { preview: BatchItemPreview; doiOnly: boolean } | undefined;
+    const selections = await showBatchConfirmDialog(previews, toolkit, copy, {
+      onRefresh: (preview, doiOnly, current) => { refresh = { preview, doiOnly }; saved = current.filter(s => s.itemKey !== preview.itemKey); },
+    }, { initialSelections: saved });
+    if (!refresh) return { selections, previews };
+    const request = refresh as { preview: BatchItemPreview; doiOnly: boolean };
+    const item = items.find(item => item.id === request.preview.itemID && item.key === request.preview.itemKey);
+    if (!item) return { selections: null, previews };
+    const progress = openBatchPreflightDialog(toolkit, 1, copy);
+    try {
+      const fetched = await (request.doiOnly ? preflightDOIBatch : preflightBatch)([item], {
+        signal: progress.signal, onProgress: event => progress.update(event),
+      });
+      const updated = fetched[0];
+      if (updated) previews = previews.map(p => p.itemKey === request.preview.itemKey ? { ...updated, normalizedDOI: updated.normalizedDOI || normalizeItemDOI(item) } : p);
+    } finally { progress.close(); }
+  }
+}
+function normalizeItemDOI(item: any): string | undefined {
+  return normalizeDOI(item?.getField?.("DOI")) || undefined;
 }
 
 async function runBatchWorkflowWith(
@@ -354,13 +471,16 @@ async function runBatchWorkflowWith(
   win: any,
   preflight: typeof preflightBatch,
 ): Promise<BatchRunResult | null> {
+  const dialogScope = getPluginDialogScope();
+  if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("reviewing");
   if (!release) {
-    alertUser(win, "已有元数据审核、重试或撤销正在进行，请完成后再试。");
+    alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly."));
     return null;
   }
   try {
-    const progress = openBatchPreflightDialog(ztoolkit, items.length);
+    const copy = await resolveDialogCopy(win);
+    const progress = openBatchPreflightDialog(ztoolkit, items.length, copy);
     let previews: BatchItemPreview[];
     try {
       previews = await preflight(items, {
@@ -371,28 +491,34 @@ async function runBatchWorkflowWith(
       progress.close();
     }
     if (previews.length === 0) {
-      alertUser(win, "请选择至少一个普通书目条目。");
+      alertUser(win, localized("请至少选择一个条目。", "Select at least one item."));
       return null;
     }
-    const selections = await showBatchConfirmDialog(previews, ztoolkit);
+    const reviewed = await reviewWithRecovery(items, previews, ztoolkit, copy);
+    const selections = reviewed.selections;
+    previews = reviewed.previews;
     if (!selections || selections.every((selection) =>
       !selection.creators
       && selection.fields.length === 0 && selection.attachments.length === 0 && selection.notes.length === 0
     )) {
       return null;
     }
-    const result = await executeSelections(selections, previews, makeBatchId());
-    alertUser(win, resultMessage(result));
+    if (!isPluginDialogScopeActive(dialogScope)) return null;
+    const result = await executeSelections(selections, previews, makeBatchId(), ztoolkit, copy);
+    release();
+    if (isPluginDialogScopeActive(dialogScope) && await presentResult(result, win, ztoolkit, copy) === "retry") await retryLastFailedBatch(win, ztoolkit, result.batchId);
     return result;
   } catch (error) {
     if (error instanceof BatchPreflightCancelledError) return null;
+    Zotero.debug(`[zmta] 更新失败：${error instanceof Error ? error.message : String(error)}`);
     const message = error instanceof BatchLimitError
-      ? error.message
-      : `批量更新失败：${error instanceof Error ? error.message : String(error)}`;
+      ? localized(`一次最多处理 ${MAX_BATCH_ITEMS} 个条目，这次选中了 ${error.count} 个。`, `Select at most ${MAX_BATCH_ITEMS} items at a time; ${error.count} were selected.`)
+      : localized("更新失败，请查看更新记录核对已完成的操作后再试。", "The update failed. Check update history for completed operations before trying again.");
     alertUser(win, message);
     return null;
   } finally {
     release();
+    restorePluginWindowFocus(win, dialogScope);
   }
 }
 
@@ -412,23 +538,26 @@ export function runDOIBatchWorkflow(
   return runBatchWorkflowWith(items, ztoolkit, win, preflightDOIBatch);
 }
 
-export async function retryLastFailedBatch(win?: any, ztoolkit?: any): Promise<BatchRunResult | null> {
+export async function retryLastFailedBatch(win?: any, ztoolkit?: any, expectedBatchId?: string): Promise<BatchRunResult | null> {
+  const dialogScope = getPluginDialogScope();
+  if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("retrying");
   if (!release) {
-    alertUser(win, "已有元数据审核、重试或撤销正在进行，请完成后再试。");
+    alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly."));
     return null;
   }
   try {
     const capabilities = getBatchRuntimeCapabilities();
     if (capabilities.loaded && capabilities.journalError) {
-      alertUser(win, "批次日志读取失败，已禁用重试以避免丢失审计记录。");
+      alertUser(win, localized("读取更新记录失败，暂时不能重试，以免记录丢失。", "Update history could not be read. Retry is disabled so the record is not lost."));
       return null;
     }
-    if (!retryState) {
-      alertUser(win, "当前会话没有可重试的失败批次。");
+    if (!retryState || (expectedBatchId && retryState.result.batchId !== expectedBatchId)) {
+      alertUser(win, localized("这次打开 Zotero 后还没有失败内容可以重试。", "Nothing has failed since Zotero started, so there is nothing to retry."));
       return null;
     }
     const batchId = makeBatchId();
+    const copy = await resolveDialogCopy(win);
     const retryableSelections = retryState.selections.filter((selection) => {
       const item = retryState!.result.items.find((entry) => entry.itemKey === selection.itemKey);
       return hasRetryableBatchOperations(item);
@@ -437,17 +566,20 @@ export async function retryLastFailedBatch(win?: any, ztoolkit?: any): Promise<B
     const items = await Promise.all(retryableSelections.map((selection) => retryGetItem(selection.itemID)));
     const batchJournal = getJournal();
     const progress = ztoolkit
-      ? openBatchPreflightDialog(ztoolkit, retryableSelections.length)
+      ? openBatchPreflightDialog(ztoolkit, retryableSelections.length, copy)
       : null;
+    let executionProgress: ExecutionDialog | null = null;
     let resolvedSelections: BatchItemSelection[] | null = null;
     let journalCallback: ReturnType<typeof createJournalCallback> | null = null;
     const startRetryJournal = async (selections: readonly BatchItemSelection[]) => {
       if (resolvedSelections) return;
-      if (progress?.signal.aborted) {
+      if (!isPluginDialogScopeActive(dialogScope) || progress?.signal.aborted) {
         throw new BatchPreflightCancelledError(0, retryableSelections.length);
       }
       // 关闭取消入口后才进入 journal/apply 边界；关闭本身不会触发 abort。
       progress?.close();
+      executionProgress = ztoolkit?.Dialog ? openExecutionDialog(ztoolkit, selections.length, copy) : null;
+      if (!isPluginDialogScopeActive(dialogScope)) throw new BatchPreflightCancelledError(0, selections.length);
       resolvedSelections = [...selections];
       await batchJournal.startBatch(batchId, retryJournalItems(resolvedSelections, items));
       const evidence = new Map(resolvedSelections.flatMap((selection) => {
@@ -462,6 +594,15 @@ export async function retryLastFailedBatch(win?: any, ztoolkit?: any): Promise<B
         batchId,
         signal: progress?.signal,
         onProgress: progress ? (event) => progress.update(event) : undefined,
+        review: async previews => {
+          progress?.close();
+          const selection = await showBatchConfirmDialog(previews, ztoolkit, copy, {}, { initialSelections: previews.filter(p => p.status === "ready").map(p => ({
+            itemID: p.itemID, itemKey: p.itemKey, fields: p.fields.filter(f => f.defaultChecked), creators: p.creators?.defaultChecked ? p.creators : undefined,
+            attachments: p.attachments, notes: p.notes, candidateDigest: p.candidateDigest,
+          })) });
+          return isPluginDialogScopeActive(dialogScope) ? selection : null;
+        },
+        onItemComplete: (item, completed, total) => executionProgress?.update({ completed, total, title: item.title, stageId: "dlg-exec-stage-item-done" }),
         onResolvedSelections: startRetryJournal,
         onOperationStatus: async (event) => {
           if (!journalCallback) throw new Error("重试候选尚未冻结，拒绝记录写入事件");
@@ -470,52 +611,59 @@ export async function retryLastFailedBatch(win?: any, ztoolkit?: any): Promise<B
       });
     } finally {
       progress?.close();
+      executionProgress?.close();
     }
     // 测试注入的旧 runner 可能不支持 onResolvedSelections；兼容时只生成无来源的空操作日志。
     if (!resolvedSelections) await startRetryJournal(retryableSelections);
     await batchJournal.finalizeBatch(batchId, finalJournalStatus(result));
     retryState = { selections: resolvedSelections || [], result };
     await refreshBatchRuntimeCapabilities();
-    alertUser(win, resultMessage(result));
+    release();
+    if (isPluginDialogScopeActive(dialogScope) && await presentResult(result, win, ztoolkit, copy, false, true) === "retry") await retryLastFailedBatch(win, ztoolkit, result.batchId);
     return result;
   } catch (error) {
     await refreshBatchRuntimeCapabilities();
     if (error instanceof BatchPreflightCancelledError) return null;
-    alertUser(win, `重试失败：${error instanceof Error ? error.message : String(error)}`);
+    Zotero.debug(`[zmta] 重试失败：${error instanceof Error ? error.message : String(error)}`);
+    alertUser(win, localized("重试没完成，请查看更新记录核对已完成的操作后再试。", "The retry did not finish. Check update history before trying again."));
     return null;
   } finally {
     release();
+    restorePluginWindowFocus(win, dialogScope);
   }
 }
 
-export async function rollbackLatestBatch(win?: any) {
+export async function rollbackLatestBatch(win?: any, ztoolkit?: any) {
+  const dialogScope = getPluginDialogScope();
+  if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("rolling-back");
-  if (!release) {
-    alertUser(win, "已有元数据审核、重试或撤销正在进行，请完成后再试。");
-    return null;
-  }
+  if (!release) { alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly.")); return null; }
+  let progress: ExecutionDialog | null = null;
   try {
-    const result = await getJournal().rollbackLatest(new DefaultZoteroRollbackPort());
-    if (!result) {
-      alertUser(win, "没有可撤销的最近批次。");
-      return null;
-    }
-    alertUser(win, [
-      `已处理最近批次 ${result.batchId} 的撤销：`,
-      `已撤销 ${result.rolledBack}`,
-      `冲突 ${result.conflicts}`,
-      `失败 ${result.failed}`,
-    ].join("\n"));
+    const copy = await resolveDialogCopy(win);
+    const batchJournal = getJournal();
+    const snapshot = await batchJournal.getLatestUndoableBatch();
+    if (!snapshot) { alertUser(win, localized("最近没有可以撤销的更新。", "There is no recent update to undo.")); return null; }
+    const confirmed = confirmUndoForTests ? await confirmUndoForTests(snapshot) : await showUndoConfirmation(snapshot, ztoolkit, copy);
+    if (!confirmed || !isPluginDialogScopeActive(dialogScope)) return null;
+    progress = ztoolkit?.Dialog ? openExecutionDialog(ztoolkit, snapshot.items.length, copy, true) : null;
+    if (!isPluginDialogScopeActive(dialogScope)) return null;
+    const result = await batchJournal.rollbackLatest(new DefaultZoteroRollbackPort(), {
+      expectedBatchId: snapshot.batchId,
+      onItemComplete: (title, completed, total) => progress?.update({ title, completed, total, stageId: "dlg-exec-stage-item-done" }),
+    });
+    progress?.close();
+    await refreshBatchRuntimeCapabilities();
+    release();
+    if (result && isPluginDialogScopeActive(dialogScope)) await presentResult(result, win, ztoolkit, copy, true);
     return result;
   } catch (error) {
-    alertUser(win, `撤销失败：${error instanceof Error ? error.message : String(error)}`);
+    Zotero.debug(`[zmta] 撤销失败：${error}`);
+    alertUser(win, localized("撤销没完成，请查看更新记录核对已撤销的操作后再试。", "The undo did not finish. Check update history before trying again."));
     return null;
   } finally {
-    try {
-      await refreshBatchRuntimeCapabilities();
-    } finally {
-      release();
-    }
+    try { progress?.close(); await refreshBatchRuntimeCapabilities(); }
+    finally { release(); restorePluginWindowFocus(win, dialogScope); }
   }
 }
 
@@ -526,9 +674,12 @@ export interface BatchRuntimeTestOptions {
   retryState?: RetryState;
   retryGetItem?: (itemID: number) => Promise<any>;
   retryRunner?: typeof retryFailedBatch;
+  confirmUndo?: (batch: BatchJournalRecord) => Promise<boolean>;
 }
 
 export function resetBatchRuntimeForTests(options: BatchRuntimeTestOptions = {}): void {
+  if (options.confirmUndo && !__testBuild__) throw new Error("测试交互仅允许测试构建注入");
+  confirmUndoForTests = __testBuild__ ? options.confirmUndo : undefined;
   journal = options.journal || null;
   journalStorage = options.storage || (options.fileHost ? new ZoteroFileBatchJournalStorage(options.fileHost) : null);
   retryState = options.retryState || null;

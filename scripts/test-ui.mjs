@@ -22,8 +22,12 @@ await build({
       'import * as pane from "./src/modules/itemPane.ts";',
       'import * as prefs from "./src/modules/itemPanePreferences.ts";',
       'import hooks, * as menu from "./src/hooks.ts";',
+      'import * as dialogLifecycle from "./src/modules/dialogLifecycle.ts";',
+      'import * as navigation from "./src/modules/metadataNavigation.ts";',
+      'import * as workflowDialogs from "./src/modules/workflowDialogs.ts";',
+      'import * as syncUpdate from "./src/modules/batchSyncUpdate.ts";',
       "const addon = new Addon();",
-      "export default { addon, uiTestApi: { ...addon.api, ...addon.testApi, ...pane, ...prefs, ...menu, hooks } };",
+      "export default { addon, uiTestApi: { ...addon.api, ...addon.testApi, ...pane, ...prefs, ...menu, ...workflowDialogs, ...dialogLifecycle, ...navigation, ...syncUpdate, hooks } };",
     ].join("\n"),
     resolveDir: root, sourcefile: "ui-fixture.ts", loader: "ts",
   },
@@ -34,6 +38,8 @@ await build({
   },
 });
 const fixture = (await import(pathToFileURL(output).href)).default;
+// 直接检查宿主测试使用的访问口，避免uiTestApi合并导出掩盖Addon漏接线。
+assert.equal(typeof fixture.addon.api.buildToolsMenuEntries, "function");
 for (const name of [
   "getReviewSelectionDefaults", "getWorkflowActivity", "subscribeWorkflowActivity",
   "tryAcquireWorkflowActivity", "runDOIBatchWorkflow",
@@ -52,11 +58,12 @@ globalThis.Zotero = {
   Items: { getAsync: forbidden }, HTTP: { request: forbidden },
   Utilities: { Internal: { md5: (text) => createHash("md5").update(text).digest("hex") } },
 };
+assert.equal(fixture.addon.api.buildToolsMenuEntries({})[0].menus[0].l10nID, "zmta-inspect-batches-menu-label");
 
 const mocha = new Mocha({ timeout: 5000 });
 for (const file of [
   "batchConfirmDialog", "batchStatusDialog", "batchPreflightDialog", "batchRuntime",
-  "safeDefaults", "workflowActivity", "itemPane", "preferences", "hostProfile",
+  "safeDefaults", "workflowActivity", "batchReadCancellation", "itemPane", "preferences", "hostProfile", "uiAlignment", "uiComponents", "dialogLifecycle", "dialogCopy",
 ]) {
   const filename = path.join(root, `test/${file}.spec.js`);
   mocha.suite.emit("pre-require", globalThis, filename, mocha);
@@ -123,3 +130,14 @@ for (const name of ["preferences", "mainWindow"]) {
 report.assetsPassed = true;
 await writeFile(path.join(directory, "results.json"), JSON.stringify(report, null, 2) + "\n");
 console.log("原生偏好资产通过：默认值、三项完整绑定、两组、复用宿主标题及中英文键一致。");
+
+// 品牌图形必须复用原图，不允许用另一个图案替代。SVG仅适配宿主绘制尺寸。
+const brandIcon = await readFile(path.join(root, "addon/content/icons/favicon.png"));
+for (const size of [16, 20]) {
+  const svg = await readFile(path.join(root, `addon/content/icons/favicon-${size}.svg`), "utf8");
+  assert.ok(svg.includes(`width="${size}" height="${size}"`));
+  const embedded = /href="data:image\/png;base64,([^"]+)"/.exec(svg)?.[1];
+  assert.ok(embedded, "缺少原App图标");
+  assert.deepEqual(Buffer.from(embedded, "base64"), brandIcon, "侧栏和菜单必须使用原App图标");
+}
+console.log("品牌图标通过：原图内容一致，16/20尺寸适配。");

@@ -15,8 +15,6 @@ describe("原生条目侧栏离线机制", function () {
   let activityListener;
   let unsubscribed;
   let runs;
-  let inspections;
-  let settings;
   let controller;
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
   const ref = (id = 1, data = {}) => ({
@@ -58,6 +56,9 @@ describe("原生条目侧栏离线机制", function () {
     section.append(body);
     const doc = {
       defaultView: win,
+      createXULElement(tag) {
+        const node = new Element(tag); node.namespaceURI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"; return node;
+      },
       createElementNS(namespace, tag) {
         expect(namespace).to.equal("http://www.w3.org/1999/xhtml");
         return new Element(tag);
@@ -100,7 +101,7 @@ describe("原生条目侧栏离线机制", function () {
     originalAddon = globalThis.addon;
     prefs = new Map(); observer = null; registrations = []; unregistrations = [];
     activity = "idle"; activityListener = null; unsubscribed = 0;
-    runs = []; inspections = []; settings = [];
+    runs = [];
     host = {
       debug() {}, alert() {},
       Prefs: {
@@ -125,8 +126,6 @@ describe("原生条目侧栏离线机制", function () {
       subscribeWorkflowActivity(listener) { activityListener = listener; return () => { unsubscribed += 1; activityListener = null; }; },
       getToolkit: () => "same-toolkit",
       runBatchWorkflow: async (...args) => { runs.push(args); },
-      inspectBatchStatus: async (...args) => { inspections.push(args); },
-      openPreferences: () => { settings.push(true); },
     });
   });
 
@@ -144,7 +143,10 @@ describe("原生条目侧栏离线机制", function () {
     expect(options.pluginID).to.equal(PLUGIN_ID);
     expect(options.header.l10nID).to.equal("zmta-item-pane-header");
     expect(options.sidenav.l10nID).to.equal("zmta-item-pane-sidenav");
-    expect(options.header.icon).to.equal("file:///plugin/content/icons/favicon.png");
+    expect(options.header.icon).to.equal("file:///plugin/content/icons/favicon-16.svg");
+    expect(options.sidenav.icon).to.equal("file:///plugin/content/icons/favicon-20.svg");
+    expect(options.header.darkIcon).to.equal(undefined);
+    expect(options.sidenav.darkIcon).to.equal(undefined);
     controller.unloadWindow(first);
     expect(unregistrations).to.deep.equal([]);
     controller.shutdown(); controller.shutdown();
@@ -160,8 +162,6 @@ describe("原生条目侧栏离线机制", function () {
       ["zmta-item-pane-source-url", "URL 已填写"],
       ["zmta-item-pane-ready", "来源将在审核时获取"],
       ["zmta-item-pane-review", "审核此条目的更新"],
-      ["zmta-item-pane-inspect", "查看批次状态"],
-      ["zmta-item-pane-settings", "设置"],
     ]);
     let cached = new Map(); // 旧0.3窗口没有本次新增键
     const removed = []; const added = []; const translated = [];
@@ -173,7 +173,7 @@ describe("原生条目侧栏离线机制", function () {
         const visit = (element) => {
           const value = cached.get(element.getAttribute("data-l10n-id"));
           if (value) {
-            if (element.tagName === "collapsible-section") element.setAttribute("label", value);
+            if (element.tagName === "collapsible-section" || element.namespaceURI?.includes("there.is.only.xul")) element.setAttribute("label", value);
             else element.textContent = value;
           }
           element.children.forEach(visit);
@@ -183,6 +183,7 @@ describe("原生条目侧栏离线机制", function () {
     };
     win.document = {
       defaultView: win, l10n,
+      createXULElement: (tag) => { const node = new Element(tag); node.namespaceURI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"; return node; },
       createElementNS: (_namespace, tag) => new Element(tag),
     };
     // 模拟原生insertFTLIfNeeded：已有同名link，直接返回，不刷新旧缓存。
@@ -197,10 +198,11 @@ describe("原生条目侧栏离线机制", function () {
     l10n.addResourceIds = (ids) => { added.push(ids); ids.forEach((id) => resources.add(id)); cached = new Map(latest); };
     api.refreshMainWindowLocalization(win);
     pane.render(); await flush();
-    expect(removed).to.deep.equal([["zmta-mainWindow.ftl"]]);
-    expect(added).to.deep.equal([["zmta-mainWindow.ftl"]]);
+    expect(removed).to.deep.equal([["zmta-mainWindow.ftl", "zmta-dialogs.ftl"]]);
+    expect(added).to.deep.equal([["zmta-mainWindow.ftl", "zmta-dialogs.ftl"]]);
     expect(pane.section.getAttribute("label")).to.equal("元数据更新");
-    for (const id of ["source-url", "ready", "review", "inspect", "settings"]) {
+    expect(pane.node("zmta-item-pane-review").getAttribute("label")).to.equal(latest.get("zmta-item-pane-review"));
+    for (const id of ["source-url", "ready"]) {
       expect(pane.node(`zmta-item-pane-${id}`).textContent).to.equal(latest.get(`zmta-item-pane-${id}`));
     }
     expect(translated.every((fragment) => fragment === pane.section)).to.equal(true);
@@ -221,7 +223,7 @@ describe("原生条目侧栏离线机制", function () {
     expect(registrations).to.have.lengthOf(1);
     expect(abandoned.body.children).to.have.lengthOf(0);
     expect(secondPane.body.children).to.have.lengthOf(1);
-    secondPane.node("zmta-item-pane-review").fire("click"); await flush();
+    secondPane.node("zmta-item-pane-review").fire("command"); await flush();
     expect(runs[0][0]).to.deep.equal(second.selected);
     controller.unloadWindow(first);
     expect(unregistrations).to.deep.equal([]);
@@ -252,6 +254,8 @@ describe("原生条目侧栏离线机制", function () {
     win.editable = true; expect(state(item, false).eligibility).to.equal("readonly");
     win.selected = [ref(1, { isEditable: () => false })]; expect(state().eligibility).to.equal("readonly");
     win.selected = [ref(1, { getField: () => "" })]; expect(state().eligibility).to.equal("missing-source");
+    win.selected = [ref(1, { getField: (key) => key === "url" ? "not-a-web-address" : "" })];
+    expect(state().eligibility).to.equal("invalid-source");
     win.selected = [ref(1, { getField: (key) => key === "DOI" ? "https://doi.org/10.1234/abc" : "" })];
     expect(state().sourceHint).to.equal("doi");
     win.selected = [item]; expect(state(ref(2)).eligibility).to.equal("unavailable");
@@ -267,7 +271,7 @@ describe("原生条目侧栏离线机制", function () {
     expect(button.disabled).to.equal(false);
     prefs.set("extensions.zmta.showItemPane", false); observer();
     expect(pane.visible).to.equal(false);
-    button.fire("click"); await flush(); expect(runs).to.have.lengthOf(0);
+    button.fire("command"); await flush(); expect(runs).to.have.lengthOf(0);
     prefs.set("extensions.zmta.showItemPane", true); observer();
     expect(pane.visible).to.equal(true); expect(pane.refreshCount).to.equal(1);
     expect(pane.node("zmta-item-pane-review")).to.equal(button);
@@ -290,22 +294,20 @@ describe("原生条目侧栏离线机制", function () {
     const item = ref(1, { getField: () => "" }); const win = windowFor(item);
     controller.register(win); const pane = mount(win);
     const button = pane.node("zmta-item-pane-review");
-    expect(button.disabled).to.equal(true); button.fire("click"); await flush();
+    expect(button.disabled).to.equal(true); button.fire("command"); await flush();
     expect(runs).to.have.lengthOf(0);
     win.selected = [ref()]; win.editable = false; pane.change(win.selected[0]);
-    expect(button.disabled).to.equal(true); button.fire("click"); await flush();
+    expect(button.disabled).to.equal(true); button.fire("command"); await flush();
     expect(runs).to.have.lengthOf(0);
   });
 
-  it("复用原审核和只读批次入口，携带原窗口及Toolkit，设置仅打开偏好", async function () {
+  it("侧栏只提供当前条目的审核入口", async function () {
     const item = ref(); const win = windowFor(item);
     controller.register(win); const pane = mount(win);
-    pane.node("zmta-item-pane-review").fire("click"); await flush();
+    pane.node("zmta-item-pane-review").fire("command"); await flush();
     expect(runs).to.deep.equal([[[item], "same-toolkit", win]]);
-    pane.node("zmta-item-pane-inspect").fire("click"); await flush();
-    expect(inspections).to.deep.equal([[win, "same-toolkit"]]);
-    pane.node("zmta-item-pane-settings").fire("click"); await flush();
-    expect(settings).to.deep.equal([true]);
+    expect(pane.node("zmta-item-pane-inspect")).to.equal(undefined);
+    expect(pane.node("zmta-item-pane-settings")).to.equal(undefined);
     expect(runs).to.have.lengthOf(1);
   });
 
@@ -313,24 +315,23 @@ describe("原生条目侧栏离线机制", function () {
     const first = ref(); const second = ref(2); const win = windowFor(first);
     controller.register(win); const pane = mount(win);
     const button = pane.node("zmta-item-pane-review");
-    win.selected = [second]; button.fire("click"); await flush();
+    win.selected = [second]; button.fire("command"); await flush();
     expect(runs).to.have.lengthOf(0);
     win.selected = [first]; pane.change(first);
     win.selected = [second]; pane.change(second, false);
-    button.fire("click"); await flush(); expect(runs).to.have.lengthOf(0);
-    button.fire("click"); await flush(); expect(runs[0][0]).to.deep.equal([second]);
+    button.fire("command"); await flush(); expect(runs).to.have.lengthOf(0);
+    button.fire("command"); await flush(); expect(runs[0][0]).to.deep.equal([second]);
     win.editable = false;
-    button.fire("click"); await flush(); expect(runs).to.have.lengthOf(1);
+    button.fire("command"); await flush(); expect(runs).to.have.lengthOf(1);
   });
 
-  it("共同忙碌订阅禁用审核但保留只读查看，不建立第二把锁", async function () {
+  it("共同忙碌订阅禁用审核，不建立第二把锁", async function () {
     const win = windowFor(); controller.register(win); const pane = mount(win);
     const button = pane.node("zmta-item-pane-review");
     activity = "reviewing"; activityListener(activity);
     expect(button.disabled).to.equal(true);
     expect(pane.node("zmta-item-pane-busy")).to.exist;
-    button.fire("click"); await flush(); expect(runs).to.have.lengthOf(0);
-    pane.node("zmta-item-pane-inspect").fire("click"); await flush(); expect(inspections).to.have.lengthOf(1);
+    button.fire("command"); await flush(); expect(runs).to.have.lengthOf(0);
     activity = "idle"; activityListener(activity);
     expect(button.disabled).to.equal(false);
   });
@@ -341,7 +342,7 @@ describe("原生条目侧栏离线机制", function () {
     controller.actions.runBatchWorkflow = (...args) => { runs.push(args); return pending; };
     const first = ref(); const second = ref(2); const win = windowFor(first);
     controller.register(win); const pane = mount(win);
-    pane.node("zmta-item-pane-review").fire("click");
+    pane.node("zmta-item-pane-review").fire("command");
     win.selected = [second]; pane.change(second);
     const count = pane.refreshCount;
     finish({ applied: 1 }); await flush();
@@ -356,12 +357,12 @@ describe("原生条目侧栏离线机制", function () {
     const firstPane = mount(first); const secondPane = mount(second);
     const stale = firstPane.node("zmta-item-pane-review");
     controller.unloadWindow(first);
-    expect(stale.listeners.click.size).to.equal(0);
-    stale.fire("click"); await flush(); expect(runs).to.have.lengthOf(0);
+    expect(stale.listeners.command.size).to.equal(0);
+    stale.fire("command"); await flush(); expect(runs).to.have.lengthOf(0);
     expect(unregistrations).to.deep.equal([]);
     activityListener("idle");
     expect(firstPane.refreshCount).to.equal(0); expect(secondPane.refreshCount).to.equal(1);
-    secondPane.node("zmta-item-pane-review").fire("click"); await flush(); expect(runs).to.have.lengthOf(1);
+    secondPane.node("zmta-item-pane-review").fire("command"); await flush(); expect(runs).to.have.lengthOf(1);
   });
 
   it("销毁／关闭窗口后不刷新、不接收动作，也不更新进行中结果", async function () {
@@ -375,7 +376,7 @@ describe("原生条目侧栏离线机制", function () {
     finish(null); await completion; await flush();
     activityListener("idle");
     expect(pane.refreshCount).to.equal(0);
-    expect(button.listeners.click.size).to.equal(0);
+    expect(button.listeners.command.size).to.equal(0);
     expect(pane.body.children).to.have.lengthOf(0);
   });
 
@@ -388,7 +389,7 @@ describe("原生条目侧栏离线机制", function () {
     controller.unloadWindow(win); win.closed = true;
     finish(null); await completion;
     expect(pane.refreshCount).to.equal(0);
-    expect(button.listeners.click.size).to.equal(0);
+    expect(button.listeners.command.size).to.equal(0);
     expect(unregistrations).to.deep.equal([]);
   });
 
@@ -417,11 +418,63 @@ describe("原生条目侧栏离线机制", function () {
       menu.onShowing(null, { setEnabled: (value) => { enabled = value; } });
       expect(enabled).to.equal(false);
       expect(pane.node("zmta-item-pane-review").disabled).to.equal(true);
-      pane.node("zmta-item-pane-review").fire("click"); await flush(); expect(runs).to.have.lengthOf(0);
+      pane.node("zmta-item-pane-review").fire("command"); await flush(); expect(runs).to.have.lengthOf(0);
     } finally { release(); }
     menu.onShowing(null, { setEnabled: (value) => { enabled = value; } });
     expect(enabled).to.equal(true);
     expect(pane.node("zmta-item-pane-review").disabled).to.equal(false);
+  });
+
+  it("右键判断拒绝删除、feed 和只读项，全局菜单使用事件所属窗口", function () {
+    const valid = ref(); const readonly = ref(2, { isEditable: () => false });
+    const first = windowFor(); first.ZoteroPane.owner = first;
+    const second = windowFor(valid); second.ZoteroPane.owner = second;
+    expect(api.canReviewBatchItems([{ ...valid, deleted: true }], second)).to.equal(false);
+    expect(api.canReviewBatchItems([{ ...valid, isFeedItem: true }], second)).to.equal(false);
+    expect(api.canReviewBatchItems([readonly, readonly], second)).to.equal(false);
+    expect(api.canReviewBatchItems([valid, readonly], second)).to.equal(true);
+    second.editable = false;
+    expect(api.canReviewBatchItems([valid, readonly], second)).to.equal(false);
+    second.editable = true;
+    first.selected = [];
+    const [parent] = api.buildBatchMenuEntries(first);
+    let enabled = false;
+    parent.menus[0].onShowing(null, { menuElem: { ownerGlobal: second }, setEnabled: (value) => { enabled = value; } });
+    expect(enabled).to.equal(true);
+    const global = api.buildToolsMenuEntries(second)[0].menus[0];
+    expect(global.l10nID).to.equal("zmta-inspect-batches-menu-label");
+    expect(global.onCommand).to.be.a("function");
+  });
+
+  it("英文菜单入口校验与侧栏条件一致，拒绝后不开始审核", function () {
+    host.locale = "en-US";
+    const alerts = [];
+    host.alert = (_win, title, message) => alerts.push({ title, message });
+    const win = windowFor(null); win.ZoteroPane.owner = win;
+    const [parent] = api.buildBatchMenuEntries(win);
+    parent.menus[0].onCommand(null, {});
+    parent.menus[1].onCommand(null, {});
+    expect(alerts).to.have.lengthOf(2);
+    expect(alerts[0].message).to.include("valid URL or DOI");
+    expect(alerts[1].message).to.include("valid DOI");
+    expect(alerts.every(({ title, message }) => title === "Metadata Update" && !/[\u4e00-\u9fff]/.test(message))).to.equal(true);
+    expect(runs).to.have.lengthOf(0);
+  });
+
+  it("macOS隐藏规则仅为本插件父菜单覆盖，逐窗口幂等安装与清理", function () {
+    const styles = [];
+    const win = { document: {
+      createElementNS: (_ns, tag) => new Element(tag),
+      documentElement: { appendChild: style => styles.push(style) },
+    } };
+    api.installMenuIconStyle(win); api.installMenuIconStyle(win);
+    expect(styles).to.have.lengthOf(1);
+    expect(styles[0].textContent).to.include('#zotero-itemmenu menu[data-l10n-id="zmta-douban-metadata-menu-label"] > .menu-icon');
+    expect(styles[0].textContent).to.include('display: flex !important');
+    let removed = false; styles[0].remove = () => { removed = true; };
+    api.removeMenuIconStyle(win); expect(removed).to.equal(true);
+    api.installMenuIconStyle(win); expect(styles).to.have.lengthOf(2);
+    api.removeMenuIconStyle(win);
   });
 
   it("生产hooks在API缺失时保留菜单，每窗口卸载不影响另一窗口", async function () {
@@ -436,10 +489,11 @@ describe("原生条目侧栏离线机制", function () {
     try {
       await api.hooks.onMainWindowLoad(first); await api.hooks.onMainWindowLoad(second);
       expect(registeredMenus).to.have.lengthOf(2);
-      expect(registeredMenus[0].menus[0].menus).to.have.lengthOf(5);
+      expect(registeredMenus[0].menus[0].menus).to.have.lengthOf(2);
+      expect(registeredMenus[1].target).to.equal("main/menubar/tools");
       await api.hooks.onMainWindowUnload(first);
-      expect(removedMenus).to.deep.equal(["menu-1"]);
-    } finally { api.hooks.onShutdown(); }
+      expect(removedMenus).to.deep.equal([]);
+    } finally { api.hooks.onShutdown(); api.beginPluginDialogScope(); }
     expect(removedMenus).to.deep.equal(["menu-1", "menu-2"]);
   });
 
@@ -448,7 +502,7 @@ describe("原生条目侧栏离线机制", function () {
     host.alert = (...args) => alerts.push(args);
     controller.actions.runBatchWorkflow = async () => { throw new Error("window unavailable"); };
     const win = windowFor(); controller.register(win); const pane = mount(win);
-    pane.node("zmta-item-pane-review").fire("click"); await flush();
+    pane.node("zmta-item-pane-review").fire("command"); await flush();
     expect(alerts).to.have.lengthOf(1);
     expect(alerts[0][2]).to.equal("zmta-item-pane-review-error");
     expect(pane.node("zmta-item-pane-review").disabled).to.equal(false);
