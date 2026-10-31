@@ -17,6 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # 审查真实源码提交及历史，不把GitHub临时合并提交的元数据当作发布内容。
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
