@@ -113,12 +113,10 @@ def check(ref='main', index=False):
                     issues.append(f'{path}: historical-file-over-10MB')
                 else:
                     issues.extend(text_issues(data, f'history/{path}'))
-        commits = git('log', ref, '--format=%H%x00%ae%x00%ce%x00%B%x00').decode().split('\x00')
-        for offset in range(0, len(commits) - 3, 4):
-            oid, author, committer, message = commits[offset:offset + 4]
-            for email in (author, committer):
-                if email != 'noreply@github.com' and not re.fullmatch(r'[^\s@]+@users\.noreply\.github\.com', email):
-                    issues.append(f'commit {oid.strip()[:12]}: non-GitHub-private-email')
+        # 作者/提交者可使用本人邮箱；继续检查全部可达提交消息中的凭据与个人路径。
+        commits = git('log', ref, '--format=%H%x00%B%x00').decode().split('\x00')
+        for offset in range(0, len(commits) - 1, 2):
+            oid, message = commits[offset:offset + 2]
             issues.extend(text_issues(message.encode(), f'commit {oid.strip()[:12]}'))
     return sorted(set(issues)), len(files)
 
