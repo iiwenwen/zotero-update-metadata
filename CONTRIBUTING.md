@@ -36,7 +36,7 @@ python3 scripts/check-candidate.py
 
 ## 提交和发布
 
-提交前查看diff，运行受影响检查；避免反复全量review。提交标题使用Conventional Commits，不自动提交、推送或发布。本项目公开提交默认使用自己的GitHub隐私邮箱（当前公开检查器仅放行该邮箱格式），不写个人home路径、凭据、文库数据或完整journal。
+提交前查看diff，运行受影响检查；避免反复全量review。提交标题使用Conventional Commits，不自动提交、推送或发布。提交可使用本人邮箱；如需隐藏真实邮箱，可自行选择GitHub提供的个人noreply地址，不强制邮箱格式。公开内容及提交消息不得包含个人home路径、凭据、文库数据或完整journal，检查仍覆盖目标ref及全部可达历史。
 
 日常仅维护一份产品源码；维护者本地技能、状态板及研究资料由忽略规则排除。换机时本地工作流需从私人备份恢复，公开clone只需能独立构建和验证插件。
 

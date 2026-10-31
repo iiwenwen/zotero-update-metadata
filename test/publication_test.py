@@ -16,7 +16,7 @@ class PublicationBoundary(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.git('init', '-q', '-b', 'main')
         self.git('config', 'user.name', 'Public Tester')
-        self.git('config', 'user.email', '1+tester@users.noreply.github.com')
+        self.git('config', 'user.email', 'contributor@example.org')
 
     def tearDown(self):
         self.temp.cleanup()
@@ -53,7 +53,7 @@ class PublicationBoundary(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('historical-private-workspace-path', result.stdout)
 
-    def test_pr_checks_source_head_without_relaxing_commit_email_guard(self):
+    def test_pr_source_and_merged_history_allow_normal_email(self):
         self.commit('README.md', 'public base')
         self.git('checkout', '-qb', 'feature')
         self.commit('feature.txt', 'public change')
@@ -64,8 +64,8 @@ class PublicationBoundary(unittest.TestCase):
         self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'HEAD').split()), 3)
         self.assertEqual(self.scan(head).returncode, 0)
         result = self.scan('HEAD')
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('non-GitHub-private-email', result.stdout)
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('synthetic-merge@example.org', result.stdout)
 
         workflow = (CHECK.parent.parent / '.github/workflows/ci.yml').read_text()
         self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', workflow)
@@ -103,14 +103,24 @@ class PublicationBoundary(unittest.TestCase):
         self.assertIn('docs/images/private.jpg: private-workspace-path', result.stdout)
         self.assertIn('docs/reviews/internal.md: private-workspace-path', result.stdout)
 
-    def test_non_private_commit_email_is_rejected_without_echo(self):
+    def test_normal_commit_email_is_allowed_without_echo(self):
         email = 'private-address@example.invalid'
         self.git('config', 'user.email', email)
         self.commit('README.md', 'public')
         result = self.scan('main')
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('non-GitHub-private-email', result.stdout)
+        self.assertEqual(result.returncode, 0)
         self.assertNotIn(email, result.stdout)
+
+    def test_commit_message_credentials_are_rejected_with_normal_email(self):
+        self.commit('README.md', 'public')
+        secret = 'ghp_' + 'b' * 36
+        self.git('commit', '--allow-empty', '-qm', 'synthetic message ' + secret)
+        self.git('commit', '--allow-empty', '-qm', 'clean follow-up')
+        result = self.scan('main')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('provider-token', result.stdout)
+        self.assertNotIn(secret, result.stdout)
+        self.assertNotIn('contributor@example.org', result.stdout)
 
     def test_github_generated_merge_committer_is_allowed(self):
         self.git("config", "user.email", "noreply@github.com")
