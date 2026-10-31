@@ -184,7 +184,7 @@ describe("本插件Dialog卸载生命周期（离线机制）", function () {
   it("首次升级仅清本插件唯一根+控件，保留宿主/其他插件/标题相同窗口及执行窗", async function () {
     const pending = api.showBatchConfirmDialog([preview()], { Dialog }, copy); const ours = Dialog.instances[0];
     delete ours.data.__zmtaDialogOwner; // 旧版无所有权标记，仍有本插件唯一根与控件。
-    const unrelated = new Dialog(); unrelated.window.document.title = "确认条目信息更新";
+    const unrelated = new Dialog(); unrelated.window.document.title = "确认元数据更新";
     const partial = new Dialog(); partial.nodes.set("zmta-batch-review", {});
     const foreign = new Dialog(); foreign.data = { __zmtaDialogOwner: { pluginID: "other-addon", rootID: "zmta-batch-review" } };
     foreign.window.arguments = [foreign.data];

@@ -86,7 +86,7 @@ function onPrefsEvent(type: string, data: { [key: string]: any }): void {
         data.window?.document?.getElementById("zmta-pref-status")?.setAttribute("data-l10n-id", ftlMessageId("pref-defaults-restored"));
       } catch (error) {
         Zotero.debug(`[zmta] 恢复设置失败：${error}`);
-        Zotero.alert(data.window, localized(PLUGIN_NAME.zh, PLUGIN_NAME.en), "没能恢复默认设置，请重新打开设置后再试。");
+        Zotero.alert(data.window, localized(PLUGIN_NAME.zh, PLUGIN_NAME.en), localized("未能恢复全部默认设置。请重新打开设置后再试。", "Not all defaults could be restored. Reopen settings and try again."));
       }
       break;
     default:

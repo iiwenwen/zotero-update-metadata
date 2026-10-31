@@ -134,7 +134,7 @@ describe("batchStatusDialog", function () {
     const layout = statusLayout([]);
     expect(textOf(layout)).to.include("还没有更新记录");
     expect(textOf(layout)).to.include("没有更新记录");
-    expect(textOf(layout)).to.include("暂无更新详情");
+    expect(textOf(layout)).to.include("没有可显示的更新详情");
     expect(inputsOf(layout)).to.deep.equal([]);
   });
 
@@ -159,7 +159,7 @@ describe("batchStatusDialog", function () {
     const copies = [0, 1, 2].map(index => ({ ...data[1], batchId: `copy-${index}`, status: index === 1 ? "failed" : "completed" }));
     const text = textOf(statusLayout(copies));
     expect(text).to.include("3 次更新");
-    expect(text).to.include("3 条条目记录");
+    expect(text).to.include("3 个条目");
     expect(text).not.to.include("0 次未完成");
   });
 

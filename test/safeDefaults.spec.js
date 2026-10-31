@@ -61,7 +61,7 @@ describe("safeDefaults（审核初选与窗口快照）", function () {
       expect(records.get("zmta-batch-attachment-count-0").textContent).to.equal(`已选 ${attachments ? 2 : 0} / 2 项`);
       expect(records.get("zmta-batch-note-count-0").textContent).to.equal(`已选 ${notes ? 2 : 0} / 2 项`);
       const total = 1 + (attachments ? 2 : 0) + (notes ? 2 : 0);
-      expect(records.get("zmta-batch-selection-summary").textContent).to.equal(`已选择 1 个条目 · ${total} 项更新`);
+      expect(records.get("zmta-batch-selection-summary").textContent).to.equal(`已勾选 1 个条目 · ${total} 项更新`);
       expect(records.has("zmta-batch-item-meta-0")).to.equal(false); // 单条不挂导航
       const selected = api.collectBatchSelections(data, doc)[0];
       expect(selected.attachments).to.have.length(attachments ? 2 : 0);
@@ -73,13 +73,13 @@ describe("safeDefaults（审核初选与窗口快照）", function () {
       const change = find(layout, "zmta-batch-field-0-0").listeners[0].listener;
       change({ currentTarget: { ownerDocument: doc } });
       expect(records.get("zmta-batch-confirm").disabled).to.equal(true);
-      expect(records.get("zmta-batch-selection-summary").textContent).to.equal("已选择 0 个条目 · 0 项更新");
+      expect(records.get("zmta-batch-selection-summary").textContent).to.equal("已勾选 0 个条目 · 0 项更新");
       records.get("zmta-batch-attachment-0-1").checked = true;
       records.get("zmta-batch-note-0-0").checked = true;
       change({ currentTarget: { ownerDocument: doc } });
       expect(records.get("zmta-batch-attachment-count-0").textContent).to.equal("已选 1 / 2 项");
       expect(records.get("zmta-batch-note-count-0").textContent).to.equal("已选 1 / 2 项");
-      expect(records.get("zmta-batch-selection-summary").textContent).to.equal("已选择 1 个条目 · 2 项更新");
+      expect(records.get("zmta-batch-selection-summary").textContent).to.equal("已勾选 1 个条目 · 2 项更新");
       expect(api.collectBatchSelections(data, doc)[0].attachments[0]).to.equal(data[0].attachments[1]);
     });
   }

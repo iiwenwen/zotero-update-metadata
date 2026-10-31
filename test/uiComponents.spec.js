@@ -73,7 +73,7 @@ describe("组件适配的离线交互与生命周期", function () {
     expect(row(1).hidden).to.equal(true);
     expect(dialog.nodes.get("zmta-batch-filter-empty").hidden).to.equal(false);
     expect(dialog.nodes.get("zmta-batch-detail-1").style.display).to.equal("none");
-    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已选择 2 个条目 · 2 项更新");
+    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已勾选 2 个条目 · 2 项更新");
     filter("all").emit("click");
     expect(dialog.nodes.get("zmta-batch-filter-empty").hidden).to.equal(true);
     expect(check.checked).to.equal(true); expect(row(1).getAttribute("data-state")).to.equal("ready");
@@ -100,7 +100,7 @@ describe("组件适配的离线交互与生命周期", function () {
     check.checked = false; change({ currentTarget: check });
     delayed.forEach(resolve => resolve());
     await new Promise(resolve => setImmediate(resolve));
-    expect(dialog.nodes.get("zmta-batch-item-meta-0").textContent).to.equal("待确认身份");
+    expect(dialog.nodes.get("zmta-batch-item-meta-0").textContent).to.equal("待核对身份");
     dialog.click("zmta-batch-cancel"); await pending;
   });
 
@@ -124,7 +124,7 @@ describe("组件适配的离线交互与生命周期", function () {
     click({ closest: () => null }); expect(check.checked).to.equal(true);
     check.checked = false; change({ currentTarget: check });
     expect(dialog.nodes.get(row.id).getAttribute("data-selected")).to.equal("false");
-    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已选择 1 个条目 · 1 项更新");
+    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已勾选 1 个条目 · 1 项更新");
     dialog.click("zmta-batch-cancel"); await pending;
   });
 
@@ -137,7 +137,7 @@ describe("组件适配的离线交互与生命周期", function () {
     expect(incoming.children[1].properties.textContent).to.equal("新");
     expect(all(layout).find(node => node.id === "zmta-batch-field-0-0-local").properties.textContent).to.equal("—");
     const input = all(layout).find(node => node.id === "zmta-batch-field-0-0");
-    expect(input.attributes["aria-label"]).to.equal("采用新内容：出版社");
+    expect(input.attributes["aria-label"]).to.equal("采用来源内容：出版社");
     expect(input.classList || []).not.to.include("zmta-sr-only");
   });
 
@@ -152,7 +152,7 @@ describe("组件适配的离线交互与生命周期", function () {
     fill.listeners[0].listener({ currentTarget: dialog.nodes.get(fill.id) });
     for (const id of ["zmta-batch-field-0-1", "zmta-batch-identity-1", "zmta-batch-attachment-0-0", "zmta-batch-note-0-0"]) expect(dialog.nodes.get(id).checked).to.equal(false);
     expect(dialog.nodes.get("zmta-batch-field-0-0").checked).to.equal(true);
-    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已选择 1 个条目 · 1 项更新");
+    expect(dialog.nodes.get("zmta-batch-selection-summary").textContent).to.equal("已勾选 1 个条目 · 1 项更新");
     dialog.click("zmta-batch-cancel"); expect(await pending).to.equal(null);
   });
 

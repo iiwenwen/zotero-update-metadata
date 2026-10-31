@@ -71,7 +71,7 @@ describe("workflowActivity（公共入口占用）", function () {
     expect(await api.runDOIBatchWorkflow([], { Dialog: ForbiddenDialog })).to.equal(null);
     expect(await api.retryLastFailedBatch()).to.equal(null);
     expect(await api.rollbackLatestBatch()).to.equal(null);
-    expect(alerts.slice(-4).every((message) => message.includes("还没结束"))).to.equal(true);
+    expect(alerts.slice(-4).every((message) => message.includes("正在处理另一项任务"))).to.equal(true);
   }
 
   it("英文环境四个占用入口拒绝并说明原因，不创建窗口或写日志", async function () {
@@ -85,7 +85,7 @@ describe("workflowActivity（公共入口占用）", function () {
       expect(await api.retryLastFailedBatch()).to.equal(null);
       expect(await api.rollbackLatestBatch()).to.equal(null);
       expect(alerts).to.have.lengthOf(4);
-      expect(alerts.every((message) => message.includes("still running") && !/[\u4e00-\u9fff]/.test(message))).to.equal(true);
+      expect(alerts.every((message) => message.includes("in progress") && !/[\u4e00-\u9fff]/.test(message))).to.equal(true);
     } finally { release(); Zotero.locale = originalLocale; }
   });
 
@@ -100,7 +100,7 @@ describe("workflowActivity（公共入口占用）", function () {
         api.runBatchWorkflow([], { Dialog }), api.runDOIBatchWorkflow([], { Dialog }),
         api.retryLastFailedBatch(), api.rollbackLatestBatch(),
       ];
-      expect(alerts.filter((message) => message.includes("还没结束"))).to.have.length(4);
+      expect(alerts.filter((message) => message.includes("正在处理另一项任务"))).to.have.length(4);
       expect(await Promise.all(attempts)).to.deep.equal([null, null, null, null]);
       expect(await pending).to.equal(null);
       expect(await storage.read()).to.equal(null);

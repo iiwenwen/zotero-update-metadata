@@ -41,6 +41,7 @@ import { DefaultZoteroMutationPort, DefaultZoteroRollbackPort, DelegatingZoteroM
 import { ATTEMPT_OUTCOMES, ROUTE_IDS, classifyAttemptOutcome, createAttemptDiagnostic, createCandidateDigest, isBlockingAttemptOutcome, isFallbackAttemptOutcome, normalizeDOI } from "./modules/update/resolution";
 import { BatchPreflightCancelledError, PREFLIGHT_PROGRESS_STAGES } from "./modules/batchTypes";
 import { getReviewSelectionDefaults } from "./modules/reviewSelectionDefaults";
+import { canRefreshReview, getReviewRecovery } from "./modules/reviewRecovery";
 import { getWorkflowActivity, subscribeWorkflowActivity, tryAcquireWorkflowActivity } from "./modules/workflowActivity";
 import { MESSAGE_NAMESPACE, createDialogCopy, fillCopy, ftlMessageId, staticDialogCopy } from "./modules/dialogCopy";
 import { EXECUTION_COPY_IDS, RESULT_COPY_IDS, UNDO_COPY_IDS } from "./modules/workflowDialogs";
@@ -73,6 +74,8 @@ class Addon {
     summarizeBatchSelections: typeof summarizeBatchSelections;
     batchSelectionSummaryArgs: typeof batchSelectionSummaryArgs;
     STATUS_MESSAGE_IDS: typeof STATUS_MESSAGE_IDS;
+    getReviewRecovery: typeof getReviewRecovery;
+    canRefreshReview: typeof canRefreshReview;
     BATCH_REVIEW_COPY_IDS: typeof BATCH_REVIEW_COPY_IDS;
     createDialogCopy: typeof createDialogCopy;
     MESSAGE_NAMESPACE: typeof MESSAGE_NAMESPACE;
@@ -180,6 +183,8 @@ class Addon {
       summarizeBatchSelections,
       batchSelectionSummaryArgs,
       STATUS_MESSAGE_IDS,
+      getReviewRecovery,
+      canRefreshReview,
       BATCH_REVIEW_COPY_IDS,
       createDialogCopy,
       MESSAGE_NAMESPACE,

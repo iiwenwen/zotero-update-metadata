@@ -343,11 +343,12 @@ function resolveBatchResolver(dependencies: BatchPreflightDependencies): DOIFall
 
 function providerFailureMessage(error: unknown): string {
   if (error instanceof ProviderError) {
-    if (error.code === "source-mismatch") return "同源验证失败";
-    if (error.code === "no-result" || error.code === "translator-missing") return "Translator 未返回结果";
-    return `Translator 获取失败：${error.message}`;
+    if (error.code === "source-mismatch") return localized("来源与条目网址不一致。条目未更新。请核对来源网址。", "The source does not match the item's URL. Nothing was updated. Check the source URL.");
+    if (error.code === "translator-missing" || error.code === "unsupported") return localized("不支持此来源。条目未更新。", "This source is not supported. Nothing was updated.");
+    if (error.code === "no-result") return localized("来源未返回可用信息。条目未更新。请核对网址或 DOI。", "The source returned no usable information. Nothing was updated. Check the source URL.");
   }
-  return `Translator 获取失败：${errorMessage(error)}`;
+  Zotero.debug(`[zmta] 来源获取失败：${errorMessage(error)}`);
+  return localized("无法获取来源信息，本条目未更新。请检查网络或核对来源。", "Could not retrieve source information. Nothing was updated. Check the network and source.");
 }
 
 type ResolveForPreflight = (
@@ -374,7 +375,7 @@ async function preflightBatchWith(
   const emitStopping = (): void => {
     if (stoppingEmitted) return;
     stoppingEmitted = true;
-    emit({ stage: "stopping", message: "正在停止查找" });
+    emit({ stage: "stopping", message: localized("正在停止查找", "Stopping lookup") });
   };
   const onAbort = (): void => {
     if (!settled) emitStopping();
@@ -384,7 +385,7 @@ async function preflightBatchWith(
     emitStopping();
     if (!cancelledEmitted) {
       cancelledEmitted = true;
-      emit({ stage: "cancelled", message: "已取消查找" });
+      emit({ stage: "cancelled", message: localized("已取消查找", "Lookup cancelled") });
     }
     throw new BatchPreflightCancelledError(completed, total);
   };
@@ -519,7 +520,7 @@ async function preflightBatchWith(
         const status = resolved.terminalOutcome === "blocked"
           ? "blocked"
           : resolved.terminalOutcome === "not-applicable" ? "skipped" : "failed";
-        completeItem(emptyPreview(item, sourceURL, status, resolved.message || "没有可核对的更新内容", {
+        completeItem(emptyPreview(item, sourceURL, status, resolved.message || localized("没有可核对的更新内容", "No updates available to review"), {
           attempts: resolved.attempts,
           terminalOutcome: resolved.terminalOutcome,
           normalizedDOI: localDOI,
@@ -577,15 +578,15 @@ async function defaultGetItem(itemID: number): Promise<any> {
 
 function validateSelectionItem(selection: BatchItemSelection, item: any, appliedFields: ReadonlyMap<string, unknown> = new Map(), appliedCreators?: readonly CandidateCreator[]): void {
   if (!item || Number(item.id) !== selection.itemID || String(item.key || "") !== selection.itemKey) {
-    throw new Error("条目不存在或身份不匹配");
+    throw new Error(localized("条目不存在或身份不匹配", "The item no longer exists or its identity has changed."));
   }
-  if (!isBibliographicItem(item) || item.deleted || item.isFeedItem === true) throw new Error("条目已不可用");
+  if (!isBibliographicItem(item) || item.deleted || item.isFeedItem === true) throw new Error(localized("条目已不可用", "The item is no longer available."));
   if (typeof item.isEditable === "function" && item.isEditable() !== true) {
-    throw new Error("条目已变为只读，未写入");
+    throw new Error(localized("条目已变为只读，未写入", "The item is now read-only. Nothing was saved."));
   }
   if (selection.candidate) {
     if (selection.candidate.identityReview?.required && !selection.identityConfirmed) {
-      throw new Error("候选身份尚未由用户确认，未写入");
+      throw new Error(localized("候选身份尚未由用户确认，未写入", "The source identity has not been confirmed. Nothing was saved."));
     }
     if (selection.candidate.identityReview?.required) {
       assertLocalIdentityEvidence(selection.candidate.identityReview, snapshotProviderItem(item).fields, appliedFields, appliedCreators);
@@ -596,21 +597,21 @@ function validateSelectionItem(selection: BatchItemSelection, item: any, applied
       || selection.candidate.item.itemKey !== selection.itemKey
       || selection.candidate.item.libraryID !== Number(item.libraryID)
     ) {
-      throw new Error("候选与当前条目身份不匹配");
+      throw new Error(localized("候选与当前条目身份不匹配", "The source does not match the current item."));
     }
     if (
       selection.candidate.itemType !== currentType
       || selection.candidate.item.itemType !== currentType
     ) {
-      throw new Error("审核后条目类型已变化，未写入");
+      throw new Error(localized("审核后条目类型已变化，未写入", "The item type changed after review. Nothing was saved."));
     }
     const candidateRoute = selection.candidate.evidence.routeId;
     if (selection.routeId && candidateRoute !== selection.routeId) {
-      throw new Error("候选路线与审核时不一致，未写入");
+      throw new Error(localized("候选路线与审核时不一致，未写入", "The source route has changed since review. Nothing was saved."));
     }
     const digest = createCandidateDigest(selection.candidate);
     if (selection.candidateDigest && digest !== selection.candidateDigest) {
-      throw new Error("候选内容与审核时不一致，未写入");
+      throw new Error(localized("候选内容与审核时不一致，未写入", "The source content has changed since review. Nothing was saved."));
     }
     const evidenceDOI = normalizeDOI(selection.candidate.evidence.identifiers
       .find((entry) => entry.type.toLowerCase() === "doi")?.value);
@@ -627,29 +628,29 @@ function validateSelectionItem(selection: BatchItemSelection, item: any, applied
         .flatMap((entry) => isbnValues(entry.value));
       if (!currentISBNs.some((value) => expectedISBNs.includes(value))
         || (localISBNs && JSON.stringify([...localISBNs].sort()) !== JSON.stringify([...currentISBNs].sort()))) {
-        throw new Error("审核后 ISBN 已变化或来源 ISBN 不一致，未写入");
+        throw new Error(localized("审核后 ISBN 已变化或来源 ISBN 不一致，未写入", "The ISBN changed after review or does not match the source. Nothing was saved."));
       }
     }
     if (expectedDOI) {
       const currentDOI = normalizeDOI(item.getField?.("DOI"));
       if (currentDOI !== expectedDOI || (evidenceDOI && evidenceDOI !== expectedDOI)) {
-        throw new Error("审核后 DOI 已变化或来源 DOI 不一致，未写入");
+        throw new Error(localized("审核后 DOI 已变化或来源 DOI 不一致，未写入", "The DOI changed after review or does not match the source. Nothing was saved."));
       }
     }
   }
   const currentURL = getItemURL(item);
   if (!selection.candidate || selection.candidate.providerId === "douban") {
     const expectedURL = appliedFields.has("url") ? String(appliedFields.get("url")) : selection.candidate?.evidence.sourceURL;
-    if (!currentURL || !extractDoubanSubject(currentURL)) throw new Error("条目不再具有豆瓣图书 URL");
+    if (!currentURL || !extractDoubanSubject(currentURL)) throw new Error(localized("条目不再具有豆瓣图书 URL", "The item no longer has a Douban Books URL."));
     if (expectedURL && !isSameDoubanBook(expectedURL, currentURL)) {
-      throw new Error("审核后豆瓣 subject 已变化，未写入");
+      throw new Error(localized("审核后豆瓣图书编号已变化，未写入", "The Douban book identifier changed after review. Nothing was saved."));
     }
   } else if (selection.candidate.evidence.routeId === "url.web") {
     if (
       !currentURL
       || normalizeHTTPURL(currentURL) !== normalizeHTTPURL(appliedFields.has("url") ? appliedFields.get("url") : selection.candidate.evidence.sourceURL)
     ) {
-      throw new Error("审核后来源 URL 已变化，未写入");
+      throw new Error(localized("审核后来源 URL 已变化，未写入", "The source URL changed after review. Nothing was saved."));
     }
   }
 }
@@ -895,7 +896,7 @@ export function buildRetryReviewPreview(original: BatchItemSelection, preview: B
   const notes = preview.notes.filter(candidate => original.notes.some(old => old.batchOperationId === candidate.batchOperationId && same(old, candidate))
     && (wholeItem || failed.has(`note:${candidate.batchOperationId}`)));
   if (preview.status === "ready" && !fields.length && !creators && !attachments.length && !notes.length) {
-    return { ...preview, status: "skipped", message: "此前失败的内容已变化或无需更新，无法安全匹配。请从原条目重新查看可更新内容。", fields, creators, attachments, notes };
+    return { ...preview, status: "skipped", message: localized("此前失败的内容已变化或无需更新，无法安全匹配。请从原条目重新查看可更新内容。", "The content that failed previously has changed or no longer needs updating. Check the original item for updates again."), fields, creators, attachments, notes };
   }
   return { ...preview, fields, creators, attachments, notes };
 }
@@ -905,18 +906,18 @@ function bindRetrySelections(previews: BatchItemPreview[], selected: BatchItemSe
   return selected.map(selection => {
     const preview = previews.find(p => p.itemID === selection.itemID && p.itemKey === selection.itemKey && p.status === "ready");
     if (!preview || seen.has(selection.itemKey) || preview.candidateDigest !== selection.candidateDigest
-      || (preview.identityReview?.required && !selection.identityConfirmed)) throw new Error("重试选择不属于本次审核");
+      || (preview.identityReview?.required && !selection.identityConfirmed)) throw new Error(localized("重试选择不属于本次审核", "The retry selection does not belong to this review."));
     seen.add(selection.itemKey);
     const bind = <T>(available: T[], chosen: T[]): T[] => {
       const used = new Set<number>();
       return chosen.map(value => {
         const index = available.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(value));
-        if (index < 0 || used.has(index)) throw new Error("重试选择超出了原失败内容范围");
+        if (index < 0 || used.has(index)) throw new Error(localized("重试选择超出了原失败内容范围", "The retry selection includes content that did not fail originally."));
         used.add(index);
         return available[index];
       });
     };
-    if (selection.creators && JSON.stringify(selection.creators) !== JSON.stringify(preview.creators)) throw new Error("重试作者选择超出范围");
+    if (selection.creators && JSON.stringify(selection.creators) !== JSON.stringify(preview.creators)) throw new Error(localized("重试作者选择超出范围", "The selected authors and contributors are outside the original failed content."));
     return { ...selection, fields: bind(preview.fields, selection.fields),
       creators: selection.creators ? preview.creators : undefined,
       attachments: bind(preview.attachments, selection.attachments), notes: bind(preview.notes, selection.notes),

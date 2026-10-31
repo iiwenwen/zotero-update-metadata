@@ -79,7 +79,7 @@ describe("dialogCopy 与 dialogs.ftl", function () {
     const { copy } = loadDialogCopy("zh-CN");
     const element = { textContent: "", attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } };
     copy.attribute(element, "aria-label", "dlg-review-accept-field", { field: "标题" });
-    expect(element.attributes["aria-label"]).to.equal("采用新内容：标题");
+    expect(element.attributes["aria-label"]).to.equal("采用来源内容：标题");
     expect(element.textContent).to.equal("");
     copy.apply(element, "dlg-result-done");
     copy.apply(element, "dlg-common-cancel");

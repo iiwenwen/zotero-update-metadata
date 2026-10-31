@@ -1,16 +1,16 @@
-pref-protection-summary = Only blank fields are filled in by default; existing values are never replaced automatically. Author lists are confirmed as a whole. Existing attachments and notes are kept. Every update needs your confirmation.
-pref-display-heading = Display and access
+pref-protection-summary = Blank fields are selected by default. Select existing values separately to replace them. Click “Update selected” to apply the changes.
+pref-display-heading = Display
 pref-showItemPane =
-    .label = Show Metadata Update in the item pane
-pref-pane-description = When this section is hidden, you can still review updates from the item context menu.
-pref-selection-heading = Default review selections
-pref-selection-description = Applies to the next review window only. All candidates remain visible and can be selected one by one.
+    .label = Show the update section in the item pane
+pref-pane-description = When this section is hidden, use the item context menu to open a review.
+pref-selection-heading = Review options
+pref-selection-description = These options apply to the initial selections in the next review.
 pref-defaultSelectAttachments =
     .label = Select new attachments by default
 pref-defaultSelectNotes =
     .label = Select new notes by default
-pref-additions-description = Off by default to avoid accidental additions. Attachments and notes are only ever added, so check for duplicates during review.
+pref-additions-description = The plugin keeps existing attachments and notes. Review new content for duplicates.
 pref-restore-defaults =
-    .label = Restore defaults
+    .label = Restore defaults on this page
 
-pref-defaults-restored = Default settings restored.
+pref-defaults-restored = Default settings on this page have been restored.

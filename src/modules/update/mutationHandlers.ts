@@ -1,3 +1,4 @@
+import { localized } from "../../utils/locale";
 import {
   ChangeExecutionError,
   type AttachmentCreateOperation,
@@ -26,6 +27,13 @@ export interface MutationHandlerContext<TItem> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 用户提示与原始异常分开；完整异常留在插件调试日志，写入状态由结构化字段判定。 */
+function failureMessage(zh: string, en: string, ...causes: unknown[]): string {
+  try { Zotero.debug(`[zmta] ${causes.filter(cause => cause !== undefined).map(errorMessage).join(" | ")}`); }
+  catch { /* 诊断输出不能影响更新结果。 */ }
+  return localized(zh, en);
 }
 
 function sameFieldValue(left: unknown, right: unknown): boolean {
@@ -119,7 +127,7 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
       } catch (error) {
         byOperationId.set(
           operation.operationId,
-          result(operation, "failed", `写前日志失败：${errorMessage(error)}`),
+          result(operation, "failed", failureMessage("无法保存更新记录。此项更新未执行。", "The update record could not be saved. This change was not applied.", error)),
         );
       }
     }
@@ -132,13 +140,13 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
       try {
         current = this.port.getField(context.item, operation.field);
       } catch (error) {
-        const message = `字段重读失败：${errorMessage(error)}`;
+        const message = localized(`无法重新读取字段：${errorMessage(error)}`, `Could not reread the field: ${errorMessage(error)}`);
         byOperationId.set(operation.operationId, result(operation, "failed", message));
         await emitFailureBestEffort(context, operation, message);
         continue;
       }
       if (!sameFieldValue(current, operation.before)) {
-        const message = "审核后本地字段已变化，未覆盖";
+        const message = localized("此字段在审核后已被修改。本次未覆盖。", "This field changed after review. It was not overwritten.");
         byOperationId.set(operation.operationId, result(operation, "failed", message));
         await emitFailureBestEffort(context, operation, message, { actualAfter: current });
         continue;
@@ -159,7 +167,7 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
       const finalVerified = verified.filter(({ operation }) => {
         const current = this.port.getField(context.item, operation.field);
         if (sameFieldValue(current, operation.before)) return true;
-        const message = "审核后本地字段已变化，未覆盖";
+        const message = localized("此字段在审核后已被修改。本次未覆盖。", "This field changed after review. It was not overwritten.");
         byOperationId.set(operation.operationId, result(operation, "failed", message));
         lateFailures.push({ operation, message });
         return false;
@@ -182,7 +190,7 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
     }
 
     if (writeError) {
-      const message = `写入失败：${errorMessage(writeError)}`;
+      const message = failureMessage("无法保存此项内容。请查看更新记录。", "This content could not be saved. View update history.", writeError);
       // save 未成功时只恢复当前对象，避免为了清理内存状态再产生一次库写入。
       for (const { operation } of verified) {
         try {
@@ -204,7 +212,7 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
       if (captureError) throw captureError;
       for (const { operation } of verified) {
         if (!actualAfter.has(operation.operationId) || !sameFieldValue(this.port.getField(context.item, operation.field), actualAfter.get(operation.operationId))) {
-          throw new Error("保存等待期间字段已变化，无法确认归属，保留当前值");
+          throw new Error(localized("保存期间字段已变化，已保留当前内容", "The field changed while saving. Its current value was kept."));
         }
       }
       context.beforeWrite?.(new Map(verified.map(({ operation }) => [operation.field, actualAfter.get(operation.operationId)])));
@@ -229,7 +237,7 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
       for (const { operation } of verified) {
         if (!actualAfter.has(operation.operationId)
           || !sameFieldValue(this.port.getField(context.item, operation.field), actualAfter.get(operation.operationId))) {
-          throw new Error("字段补偿冲突：当前值已被修改或无法确认，保留人工内容");
+          throw new Error(localized("无法安全恢复字段，已保留当前内容", "The field could not be safely restored. Its current value was kept."));
         }
       }
       for (const { operation } of verified) {
@@ -241,8 +249,8 @@ export class FieldMutationHandler<TItem, TCreatedItem> {
     }
 
     const message = compensationError
-      ? `严重：applied 日志失败或保存后重读失败（${errorMessage(postWriteError)}），字段补偿也失败（${errorMessage(compensationError)}）[compensation-failed]`
-      : `applied 日志或保存后重读失败，已恢复审核前字段值：${errorMessage(postWriteError)}`;
+      ? failureMessage("此项更新的实际结果需人工核对。请查看更新记录。请勿重复执行此项更新。", "The actual result requires manual review. View update history. Do not repeat this change.", postWriteError, compensationError)
+      : failureMessage("无法记录或核对此项更新结果。已恢复更新前的内容。", "The result could not be recorded or verified. The original content was restored.", postWriteError);
     for (const { operation } of verified) {
       byOperationId.set(operation.operationId, result(operation, "failed", message, Boolean(compensationError)));
       await emitFailureBestEffort(context, operation, message, {
@@ -265,7 +273,7 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
     try {
       await emit(context, operation, "planned");
     } catch (error) {
-      return result(operation, "failed", `写前日志失败：${errorMessage(error)}`);
+      return result(operation, "failed", failureMessage("无法保存更新记录。此项更新未执行。", "The update record could not be saved. This change was not applied.", error));
     }
 
     let current: readonly CandidateCreator[];
@@ -273,12 +281,12 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
       context.beforeWrite?.();
       current = this.port.getCreators(context.item);
     } catch (error) {
-      const message = `Creator 列表重读失败：${errorMessage(error)}`;
+      const message = localized(`无法重新读取作者与贡献者名单：${errorMessage(error)}`, `Could not reread the authors and contributors: ${errorMessage(error)}`);
       await emitFailureBestEffort(context, operation, message);
       return result(operation, "failed", message);
     }
     if (!sameCreators(current, operation.before)) {
-      const message = "审核后本地 Creator 列表已变化，未覆盖";
+      const message = localized("作者与贡献者名单在审核后已被修改。本次未覆盖。", "The authors and contributors changed after review. They were not overwritten.");
       await emitFailureBestEffort(context, operation, message, { actualAfter: current });
       return result(operation, "failed", message);
     }
@@ -297,7 +305,7 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
     }
 
     if (writeError) {
-      const message = `写入失败：${errorMessage(writeError)}`;
+      const message = failureMessage("无法保存此项内容。请查看更新记录。", "This content could not be saved. View update history.", writeError);
       try {
         if (sameCreators(this.port.getCreators(context.item), actualAfter || operation.after)) {
           this.port.setCreators(context.item, operation.before);
@@ -313,7 +321,7 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
     try {
       if (captureError) throw captureError;
       if (!actualAfter || !sameCreators(this.port.getCreators(context.item), actualAfter)) {
-        throw new Error("保存等待期间Creator已变化，无法确认归属，保留当前名单");
+        throw new Error(localized("保存期间作者与贡献者已变化，已保留当前名单", "The authors and contributors changed while saving. The current list was kept."));
       }
       context.beforeWrite?.(undefined, actualAfter);
       await emit(context, operation, "applied", { actualAfter });
@@ -326,7 +334,7 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
     let compensationError: unknown;
     try {
       if (!actualAfter || !sameCreators(this.port.getCreators(context.item), actualAfter)) {
-        throw new Error("Creator 补偿冲突：当前名单已被修改或无法确认，保留人工内容");
+        throw new Error(localized("无法安全恢复作者与贡献者，已保留当前名单", "The authors and contributors could not be safely restored. The current list was kept."));
       }
       this.port.setCreators(context.item, operation.before);
       await this.port.saveItem(context.item);
@@ -335,8 +343,8 @@ export class CreatorMutationHandler<TItem, TCreatedItem> {
     }
 
     const message = compensationError
-      ? `严重：applied 日志失败或保存后重读失败（${errorMessage(postWriteError)}），Creator 列表补偿也失败（${errorMessage(compensationError)}）[compensation-failed]`
-      : `applied 日志或保存后重读失败，已恢复审核前 Creator 列表：${errorMessage(postWriteError)}`;
+      ? failureMessage("此项更新的实际结果需人工核对。请查看更新记录。请勿重复执行此项更新。", "The actual result requires manual review. View update history. Do not repeat this change.", postWriteError, compensationError)
+      : failureMessage("无法记录或核对此项更新结果。已恢复更新前的内容。", "The result could not be recorded or verified. The original content was restored.", postWriteError);
     await emitFailureBestEffort(context, operation, message, { actualAfter, ...(compensationError ? { recoveryRequired: true } : {}) });
     return result(operation, "failed", message, Boolean(compensationError));
   }
@@ -350,7 +358,7 @@ abstract class CreatedItemMutationHandler<
   constructor(protected readonly port: ZoteroMutationPort<TItem, TCreatedItem>) {}
 
   protected abstract create(item: TItem, operation: TOperation): Promise<TCreatedItem>;
-  protected abstract noun(): "附件" | "Note";
+  protected abstract noun(): string;
 
   async execute(
     operation: TOperation,
@@ -359,7 +367,7 @@ abstract class CreatedItemMutationHandler<
     try {
       await emit(context, operation, "planned");
     } catch (error) {
-      return result(operation, "failed", `写前日志失败：${errorMessage(error)}`);
+      return result(operation, "failed", failureMessage("无法保存更新记录。此项更新未执行。", "The update record could not be saved. This change was not applied.", error));
     }
 
     let created: TCreatedItem;
@@ -367,7 +375,7 @@ abstract class CreatedItemMutationHandler<
       context.beforeWrite?.();
       created = await this.create(context.item, operation);
     } catch (error) {
-      const message = `写入失败：${errorMessage(error)}`;
+      const message = failureMessage("无法保存此项内容。请查看更新记录。", "This content could not be saved. View update history.", error);
       await emitFailureBestEffort(context, operation, message);
       return result(operation, "failed", message);
     }
@@ -379,21 +387,21 @@ abstract class CreatedItemMutationHandler<
       createdItemFingerprint = this.port.getCreatedItemCreationFingerprint?.(created);
       context.beforeWrite?.();
       await emit(context, operation, "applied", { createdItemKey, createdItemFingerprint,
-        ...(!createdItemFingerprint ? { message: "无法确认创建初始状态，撤销时将保留该子项" } : {}),
+        ...(!createdItemFingerprint ? { message: localized("无法确认新增内容的初始状态，撤销时会保留该内容", "The initial state of this new content could not be verified. It will be kept when undoing.") } : {}),
       });
       return result(operation, "applied");
     } catch (journalError) {
       let compensationError: unknown;
       try {
-        if (!createdItemFingerprint) throw new ChangeExecutionError("conflict", "缺少创建初始状态证明，保留新增子项");
+        if (!createdItemFingerprint) throw new ChangeExecutionError("conflict", localized("无法确认新增内容是否已被改动，已保留", "The new content was kept because its initial state could not be verified."));
         await this.port.trashCreatedItem(created, createdItemFingerprint);
       } catch (error) {
         compensationError = error;
       }
-      const identity = createdItemKey ? `；新建项 ${createdItemKey}` : "";
+
       const message = compensationError
-        ? `严重：applied 日志失败或写后身份复核失败（${errorMessage(journalError)}），${this.noun()}补偿也失败（${errorMessage(compensationError)}）${identity}[compensation-failed]`
-        : `applied 日志失败或写后身份复核失败，新增${this.noun()}已移入回收站：${errorMessage(journalError)}`;
+        ? failureMessage("此项更新的实际结果需人工核对。请查看更新记录。请勿重复执行此项更新。", "The actual result requires manual review. View update history. Do not repeat this change.", journalError, compensationError)
+        : failureMessage(`无法记录或核对新增结果。新增${this.noun()}已移入回收站。`, `The new content could not be recorded or verified. The new ${this.noun()} was moved to the trash.`, journalError);
       await emitFailureBestEffort(context, operation, message, { createdItemKey, createdItemFingerprint,
         ...(compensationError ? { recoveryRequired: true } : {}),
       });
@@ -408,8 +416,8 @@ export class AttachmentMutationHandler<TItem, TCreatedItem>
     return this.port.createAttachment(item, operation.attachment);
   }
 
-  protected noun(): "附件" {
-    return "附件";
+  protected noun(): string {
+    return localized("附件", "attachment");
   }
 }
 
@@ -419,13 +427,13 @@ export class NoteMutationHandler<TItem, TCreatedItem>
     return this.port.createNote(item, operation.content);
   }
 
-  protected noun(): "Note" {
-    return "Note";
+  protected noun(): string {
+    return localized("笔记", "note");
   }
 }
 
 export function invalidOperationMessage(error: unknown): string {
   return error instanceof ChangeExecutionError
     ? error.message
-    : `执行失败：${errorMessage(error)}`;
+    : localized(`执行失败：${errorMessage(error)}`, `The operation failed: ${errorMessage(error)}`);
 }

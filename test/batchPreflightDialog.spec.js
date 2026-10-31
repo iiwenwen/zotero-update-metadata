@@ -31,7 +31,7 @@ describe("batchPreflightDialog", function () {
     expect(running).to.deep.equal({
       completed: 0, total: 1, title: "测试条目", stageId: "dlg-preflight-stage-route", stopping: false,
     });
-    expect(copy.text(running.stageId)).to.equal("正在查找最新信息");
+    expect(copy.text(running.stageId)).to.equal("正在获取来源信息");
     const stopping = api.reduceBatchPreflightViewState({ ...running, stopping: true }, {
       stage: "item-complete", completed: 1, total: 1, title: "测试条目", status: "ready",
     });

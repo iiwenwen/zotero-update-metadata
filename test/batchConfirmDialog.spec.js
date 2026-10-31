@@ -119,7 +119,7 @@ describe("batchConfirmDialog", function () {
     const [header, body, footer] = layout.children;
     expect(header.children[0].children[0].properties.textContent).to.equal("3 个条目 · 1 个可更新");
     const selectionSummary = findNode(footer, (node) => node.id === "zmta-batch-selection-summary");
-    expect(selectionSummary.properties.textContent).to.equal("已选择 1 个条目 · 1 项更新");
+    expect(selectionSummary.properties.textContent).to.equal("已勾选 1 个条目 · 1 项更新");
     expect(header.children[1].properties.textContent).to.equal("勾选所有条目的空白字段");
     const [left, right] = body.children;
     expect(left.tag).to.equal("nav");
@@ -139,7 +139,7 @@ describe("batchConfirmDialog", function () {
     expect(findByClass(right.children[1], "zmta-detail-source")).to.equal(undefined);
     expect(findByClass(right.children[1], "zmta-item-message").properties.textContent).to.equal("无豆瓣 URL");
     const headers = findNode(readyDetail, (node) => node.tag === "thead");
-    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "项目", "现有内容", "新内容"]);
+    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "项目", "现有内容", "来源内容"]);
   });
 
   it("字段使用宿主名称和可读后备名，来源内部ID不进入普通视图", function () {
@@ -222,8 +222,8 @@ describe("batchConfirmDialog", function () {
         : { checked: checked.has(id) },
     };
     firstFieldInput.listeners[0].listener({ currentTarget: { ownerDocument: doc } });
-    expect(summaryElement.textContent).to.equal("已选择 1 个条目 · 2 项更新");
-    expect(findNode(footer, (node) => node.id === "zmta-batch-selection-summary").properties.textContent).to.equal("已选择 1 个条目 · 1 项更新");
+    expect(summaryElement.textContent).to.equal("已勾选 1 个条目 · 2 项更新");
+    expect(findNode(footer, (node) => node.id === "zmta-batch-selection-summary").properties.textContent).to.equal("已勾选 1 个条目 · 1 项更新");
   });
 
   it("底部更新按钮排除未确认身份，零有效选择时禁用", function () {
@@ -240,11 +240,11 @@ describe("batchConfirmDialog", function () {
     const change = () => identity.listeners[0].listener({ currentTarget: { ownerDocument: doc } });
     change();
     expect(confirm.disabled).to.equal(true);
-    expect(summary.textContent).to.equal("已选择 0 个条目 · 0 项更新");
+    expect(summary.textContent).to.equal("已勾选 0 个条目 · 0 项更新");
     checked.add("zmta-batch-identity-0");
     change();
     expect(confirm.disabled).to.equal(false);
-    expect(summary.textContent).to.equal("已选择 1 个条目 · 2 项更新");
+    expect(summary.textContent).to.equal("已勾选 1 个条目 · 2 项更新");
     checked.clear();
     change();
     expect(confirm.disabled).to.equal(true);
@@ -401,7 +401,7 @@ describe("batchConfirmDialog", function () {
     const detail = dialogLayout(data).children[1].children[1].children[0];
     const warning = findByClass(detail, "zmta-excluded-fields");
     expect(warning.classList).to.include("zmta-excluded-fields");
-    expect(warning.children[0].properties.textContent).to.equal("有 1 个字段不适用于这个条目，已保留原内容");
+    expect(warning.children[0].properties.textContent).to.equal("有 1 个字段不适用于此条目，已排除。");
     expect(warning.children).to.have.length(1);
     const technicalWarning = findByClass(
       dialogLayout(data, { showTechnicalDetails: true }),
@@ -484,7 +484,7 @@ describe("batchConfirmDialog", function () {
     expect(loaded).to.equal(true);
     expect(classes.has("zmta-review-window")).to.equal(true);
     expect(confirm.disabled).to.equal(true);
-    expect(summary.textContent).to.equal("已选择 0 个条目 · 0 项更新");
+    expect(summary.textContent).to.equal("已勾选 0 个条目 · 0 项更新");
   });
 
   it("取消按钮返回 null", async function () {
@@ -573,7 +573,7 @@ describe("batchConfirmDialog", function () {
       checkbox.click();
       expect(checkbox.checked).to.equal(true);
       expect(confirm.disabled).to.equal(false);
-      expect(doc.getElementById("zmta-batch-selection-summary").textContent).to.equal("已选择 1 个条目 · 1 项更新");
+      expect(doc.getElementById("zmta-batch-selection-summary").textContent).to.equal("已勾选 1 个条目 · 1 项更新");
 
       doc.getElementById("zmta-batch-cancel").click();
       expect(await pending).to.equal(null);

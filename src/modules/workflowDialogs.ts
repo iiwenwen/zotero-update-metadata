@@ -178,12 +178,14 @@ function operationCopy(operation: BatchItemResult["operations"][number], copyMes
   const label = operation.kind === "field"
     ? metadataFieldLabel(operation.identity)
     : copyMessages.text(OPERATION_LABEL_IDS[operation.kind]);
-  return { label, state: copyMessages.text(OPERATION_STATE_IDS[operation.status] || "dlg-result-op-failed") };
+  const added = operation.status === "applied" && (operation.kind === "attachment" || operation.kind === "note");
+  return { label, state: copyMessages.text(added ? "dlg-result-op-added" : OPERATION_STATE_IDS[operation.status] || "dlg-result-op-failed") };
 }
 
 export const RESULT_COPY_IDS: readonly MessageId[] = Object.freeze([
   "dlg-result-title-update", "dlg-result-title-undo", "dlg-result-title-retry", "dlg-result-state-unknown",
   "dlg-result-records", "dlg-result-retry", "dlg-result-done",
+  "dlg-result-op-added",
   ...Object.values(ITEM_STATE_IDS), ...Object.values(OPERATION_STATE_IDS), ...Object.values(OPERATION_LABEL_IDS),
   "dlg-result-item", "dlg-result-operation", "dlg-result-operation-message", "dlg-result-summary-update", "dlg-result-summary-undo",
 ]);

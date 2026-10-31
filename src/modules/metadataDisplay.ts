@@ -1,16 +1,16 @@
 import { localized } from "../utils/locale";
 
 // 审核与更新记录共用宿主字段名称；内部key只用于数据，不作用户文案。
-const FIELD_LABELS: Record<string, string> = {
-  title: "标题", shortTitle: "短标题", abstractNote: "摘要", date: "日期",
-  publisher: "出版社", publicationTitle: "刊物名称", volume: "卷", issue: "期",
-  pages: "页码", edition: "版次", language: "语言", ISBN: "ISBN", ISSN: "ISSN",
-  DOI: "DOI", url: "网址", accessDate: "访问时间", conferenceName: "会议名称",
-  libraryCatalog: "文库编目", place: "地点", extra: "其他", rights: "版权",
-  proceedingsTitle: "论文集标题", series: "丛书", seriesTitle: "丛书标题",
-  seriesNumber: "丛书编号", numPages: "总页数", numberOfVolumes: "总卷数",
-  journalAbbreviation: "刊名简称", archive: "档案馆", archiveLocation: "馆藏位置",
-  callNumber: "索书号", itemType: "条目类型", dateAdded: "添加日期", dateModified: "修改日期",
+const FIELD_LABELS: Record<string, readonly [string, string]> = {
+  title: ["标题", "Title"], shortTitle: ["短标题", "Short Title"], abstractNote: ["摘要", "Abstract"], date: ["日期", "Date"],
+  publisher: ["出版社", "Publisher"], publicationTitle: ["刊物名称", "Publication"], volume: ["卷", "Volume"], issue: ["期", "Issue"],
+  pages: ["页码", "Pages"], edition: ["版次", "Edition"], language: ["语言", "Language"], ISBN: ["ISBN", "ISBN"], ISSN: ["ISSN", "ISSN"],
+  DOI: ["DOI", "DOI"], url: ["网址", "URL"], accessDate: ["访问时间", "Accessed"], conferenceName: ["会议名称", "Conference Name"],
+  libraryCatalog: ["文库编目", "Library Catalog"], place: ["地点", "Place"], extra: ["其他", "Extra"], rights: ["版权", "Rights"],
+  proceedingsTitle: ["论文集标题", "Proceedings Title"], series: ["丛书", "Series"], seriesTitle: ["丛书标题", "Series Title"],
+  seriesNumber: ["丛书编号", "Series Number"], numPages: ["总页数", "Number of Pages"], numberOfVolumes: ["总卷数", "Number of Volumes"],
+  journalAbbreviation: ["刊名简称", "Journal Abbreviation"], archive: ["档案馆", "Archive"], archiveLocation: ["馆藏位置", "Archive Location"],
+  callNumber: ["索书号", "Call Number"], itemType: ["条目类型", "Item Type"], dateAdded: ["添加日期", "Date Added"], dateModified: ["修改日期", "Date Modified"],
 };
 
 // 作者角色与获取方式在六个对话框里反复出现，标签只在这里定义一次。
@@ -48,7 +48,8 @@ export function metadataFieldLabel(field: string): string {
     const label = Zotero.ItemFields?.getLocalizedString(field);
     if (typeof label === "string" && label.trim() && label !== field) return label;
   } catch { /* 未知字段或离线fixture使用可读后备名称 */ }
-  return FIELD_LABELS[field] || localized("其他信息", "Other information");
+  const pair = FIELD_LABELS[field];
+  return pair ? localized(pair[0], pair[1]) : localized("其他信息", "Other information");
 }
 
 export function creatorRoleLabel(creatorType: string): string {

@@ -15,6 +15,7 @@ import type {
 } from "./batchTypes";
 import { getPref } from "../utils/prefs";
 import { getReviewSelectionDefaults, type ReviewSelectionDefaults } from "./reviewSelectionDefaults";
+import { canRefreshReview, getReviewRecovery } from "./reviewRecovery";
 
 declare const Zotero: any;
 
@@ -53,6 +54,17 @@ interface BatchDialogActions {
   onSelectionChange?(): void;
 }
 
+const RECOVERY_REASON_IDS = {
+  "unsupported": "dlg-review-reason-unsupported", "no-result": "dlg-review-reason-no-result",
+  "access-denied": "dlg-review-reason-access-denied", "rate-limited": "dlg-review-reason-rate-limited",
+  "invalid-response": "dlg-review-reason-invalid-response",
+} as const;
+
+function reviewStatusMessageId(preview: BatchItemPreview): MessageId {
+  const reason = getReviewRecovery(preview).reason;
+  return reason ? RECOVERY_REASON_IDS[reason] : STATUS_MESSAGE_IDS[preview.status];
+}
+
 /** 条目状态在 dialogs.ftl 里的消息 id；显示文本一律由 copy 解析。 */
 export const STATUS_MESSAGE_IDS: Record<BatchItemStatus, MessageId> = {
   pending: "dlg-review-status-pending",
@@ -84,6 +96,8 @@ export const BATCH_REVIEW_COPY_IDS: readonly MessageId[] = Object.freeze([
   "dlg-review-excluded-details", "dlg-review-technical",
   "dlg-review-source-missing", "dlg-review-source-unknown", "dlg-review-source-douban",
   "dlg-common-cancel", "dlg-common-not-filled", "dlg-common-unnamed-item",
+  "dlg-review-reason-unsupported", "dlg-review-reason-no-result", "dlg-review-reason-access-denied",
+  "dlg-review-reason-rate-limited", "dlg-review-reason-invalid-response",
   ...Object.values(STATUS_MESSAGE_IDS),
   "dlg-review-overview", "dlg-review-selection-summary", "dlg-review-item-meta", "dlg-review-item-meta-count", "dlg-review-count", "dlg-review-identity-detail", "dlg-review-accept-field", "dlg-review-expand", "dlg-review-note-label", "dlg-review-section-fields-count", "dlg-review-excluded", "dlg-review-source",
 ]);
@@ -333,7 +347,7 @@ function refreshBatchSelectionUI(previews: BatchItemPreview[], doc: Document, co
     if (meta) {
       if (preview.status === "ready" && identityConfirmed) {
         copy.apply(meta, "dlg-review-count", { selected: count, total: preview.fields.length + (preview.creators ? 1 : 0) + preview.attachments.length + preview.notes.length });
-      } else copy.apply(meta, preview.status === "ready" ? "dlg-review-status-identity" : STATUS_MESSAGE_IDS[preview.status]);
+      } else copy.apply(meta, preview.status === "ready" ? "dlg-review-status-identity" : reviewStatusMessageId(preview));
     }
     const detailCount = doc.getElementById(`zmta-batch-detail-count-${itemIndex}`);
     if (detailCount && preview.status === "ready") copy.apply(detailCount, "dlg-review-count", { selected: count, total: preview.fields.length + (preview.creators ? 1 : 0) + preview.attachments.length + preview.notes.length });
@@ -790,6 +804,7 @@ export function buildBatchDialogLayout(
   const initialIndex = firstVisibleIndex >= 0 ? firstVisibleIndex : 0;
 
   const details = previews.map((preview, itemIndex) => {
+    const recovery = getReviewRecovery(preview);
     const preset = presetFor(preview);
     const identityReview = preview.status === "ready" ? buildIdentityReview(preview, itemIndex, onSelectionChange, copy, fill, preset?.identityConfirmed === true) : null;
     const excludedFields = buildExcludedFieldWarnings(preview, showTechnicalDetails, copy, fill);
@@ -818,10 +833,15 @@ export function buildBatchDialogLayout(
         ...sections,
         ...(preview.status !== "ready" ? [{
           tag: "div", namespace: "html", classList: ["zmta-empty"], attributes: { role: "status" }, children: [
-            { tag: "strong", namespace: "html", properties: { textContent: copy.text(STATUS_MESSAGE_IDS[preview.status]) } },
+            { tag: "strong", namespace: "html", properties: { textContent: copy.text(reviewStatusMessageId(preview)) } },
             { tag: "p", namespace: "html", classList: ["zmta-item-message"], properties: { textContent: preview.message || copy.text("dlg-review-item-skipped") } },
-            ...(actions.onRefresh ? [{ tag: "button", namespace: "html", attributes: { type: "button" }, properties: { textContent: copy.text("dlg-review-refresh") }, listeners: [{ type: "click", listener: () => actions.onRefresh?.(itemIndex, false) }] },
-              ...(preview.normalizedDOI ? [{ tag: "button", namespace: "html", attributes: { type: "button" }, properties: { textContent: copy.text("dlg-review-refresh-doi") }, listeners: [{ type: "click", listener: () => actions.onRefresh?.(itemIndex, true) }] }] : [])] : []),
+            ...(actions.onRefresh && recovery.retryRoute ? [{ tag: "button", namespace: "html", attributes: { type: "button" }, properties: { textContent: copy.text("dlg-review-refresh") }, listeners: [{ type: "click", listener: () => {
+              const doiOnly = recovery.retryRoute === "doi.search";
+              if (canRefreshReview(preview, doiOnly)) actions.onRefresh?.(itemIndex, doiOnly);
+            } }] }] : []),
+            ...(actions.onRefresh && recovery.canUseDOI && recovery.retryRoute !== "doi.search" ? [{ tag: "button", namespace: "html", attributes: { type: "button" }, properties: { textContent: copy.text("dlg-review-refresh-doi") }, listeners: [{ type: "click", listener: () => {
+              if (canRefreshReview(preview, true)) actions.onRefresh?.(itemIndex, true);
+            } }] }] : []),
           ],
         }] : !sections.length ? [{ tag: "div", namespace: "html", classList: ["zmta-empty"], properties: { textContent: copy.text("dlg-review-nothing-to-update") } }] : []),
         ...(preview.status === "ready" && (preview.attachments.length || preview.notes.length) ? [{
@@ -951,7 +971,7 @@ export function showBatchConfirmDialog(
       }, {
         onSelectionChange: () => refreshNavigation(),
         ...(observer.onRefresh ? { onRefresh: (index: number, doiOnly: boolean) => {
-          if (resolved || !owned?.active()) return;
+          if (resolved || !owned?.active() || !previews[index] || !canRefreshReview(previews[index], doiOnly)) return;
           const doc = dialog?.window?.document;
           const snapshot = previews.filter(p => p.status === "ready").map(p => {
             const i = previews.indexOf(p);

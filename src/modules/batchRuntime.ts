@@ -33,6 +33,7 @@ import { normalizeDOI } from "./update/resolution";
 import { tryAcquireWorkflowActivity } from "./workflowActivity";
 import { PLUGIN_NAME } from "../config";
 import { localized } from "../utils/locale";
+import { canRefreshReview } from "./reviewRecovery";
 
 declare const Zotero: any;
 declare const __testBuild__: boolean;
@@ -180,13 +181,13 @@ export async function inspectBatchStatus(win?: any, ztoolkit?: any, options: { b
       batches = await (journal.getHistoryBatches ? journal.getHistoryBatches() : journal.getInspectableBatches());
     } catch (cause) {
       batches = [];
-      error = "暂时无法读取更新记录，请稍后重新读取。";
+      error = localized("无法读取更新记录。请重新读取。", "Update history could not be read. Reload the records.");
       Zotero.debug(`[zmta] 更新记录读取失败：${cause}`);
     }
     await refreshBatchRuntimeCapabilities();
     if (!isPluginDialogScopeActive(dialogScope)) return null;
     if (!ztoolkit?.Dialog) {
-      alertUser(win, error || (batches.length ? "暂时打不开更新记录窗口。" : localized("还没有更新记录。", "There is no update history yet.")));
+      alertUser(win, error || (batches.length ? localized("暂时打不开更新记录窗口。", "The update history window could not be opened.") : localized("还没有更新记录。", "There is no update history yet.")));
       return null;
     }
     const locatable = new Set<string>();
@@ -204,14 +205,14 @@ export async function inspectBatchStatus(win?: any, ztoolkit?: any, options: { b
         onReloadRequest: () => { reload = true; },
         onLocate: async (item) => {
           const current = await Zotero.Items.getAsync(item.itemID);
-          if (!isPluginDialogScopeActive(dialogScope) || !win || win.closed || !current || current.key !== item.itemKey || current.deleted) throw new Error("原窗口或条目已不可用，请保留记录并在文库中核对。");
+          if (!isPluginDialogScopeActive(dialogScope) || !win || win.closed || !current || current.key !== item.itemKey || current.deleted) throw new Error(localized("原条目或窗口已不可用。更新记录仍可查看。", "The original item or window is unavailable. You can still view the update record."));
           await win.ZoteroPane.selectItem(item.itemID);
           win.focus?.();
         },
       }, { error, initialBatchId: options.batchId, locatableItemKeys: locatable });
     } catch (cause) {
       Zotero.debug(`[zmta] 更新记录窗口失败：${cause}`);
-      alertUser(win, "打不开更新记录窗口，请稍后重试。");
+      alertUser(win, localized("无法打开更新记录窗口。请稍后重试。", "The update history window could not be opened. Try again later."));
       return null;
     }
   }
@@ -366,8 +367,8 @@ export function finalJournalStatus(result: BatchRunResult): "completed" | "parti
 function resultMessage(result: BatchRunResult): string {
   const recoveryRequired = result.items.some((item) => item.operations.some((entry) => entry.recoveryRequired));
   return [
-    localized("条目信息更新结果", "Update results"),
-    localized(`成功 ${result.applied}`, `Updated ${result.applied}`),
+    localized("更新结果", "Update results"),
+    localized(`已更新 ${result.applied}`, `Updated ${result.applied}`),
     localized(`部分完成 ${result.partial}`, `Partly updated ${result.partial}`),
     localized(`未更新 ${result.skipped}`, `Not updated ${result.skipped}`),
     localized(`失败 ${result.failed}`, `Failed ${result.failed}`),
@@ -422,7 +423,7 @@ async function presentResult(
 ): Promise<"done" | "retry"> {
   if (!toolkit?.Dialog) {
     if ("applied" in result) alertUser(win, resultMessage(result));
-    else alertUser(win, `已撤销 ${result.rolledBack} 项；保留 ${result.conflicts} 项；失败 ${result.failed} 项`);
+    else alertUser(win, localized(`已撤销 ${result.rolledBack} 项；保留 ${result.conflicts} 项；失败 ${result.failed} 项`, `${result.rolledBack} undone; ${result.conflicts} kept; ${result.failed} failed`));
     return "done";
   }
   try {
@@ -432,7 +433,7 @@ async function presentResult(
     });
   } catch (error) {
     Zotero.debug(`[zmta] 结果显示失败：${error}`);
-    alertUser(win, "处理已结束，但结果窗口打不开。请从工具菜单查看更新记录，不要重复执行。");
+    alertUser(win, localized("处理已结束，但无法打开结果窗口。请从工具菜单查看更新记录。请勿重复执行更新。", "Processing has ended, but the results window could not be opened. View update history from the Tools menu. Do not repeat the update."));
     return "done";
   }
 }
@@ -449,8 +450,15 @@ async function reviewWithRecovery(items: any[], initial: BatchItemPreview[], too
     }, { initialSelections: saved });
     if (!refresh) return { selections, previews };
     const request = refresh as { preview: BatchItemPreview; doiOnly: boolean };
-    const item = items.find(item => item.id === request.preview.itemID && item.key === request.preview.itemKey);
-    if (!item) return { selections: null, previews };
+    if (!canRefreshReview(request.preview, request.doiOnly)) return { selections: null, previews };
+    const item = items.find(item => item.id === request.preview.itemID && item.key === request.preview.itemKey
+      && item.libraryID === request.preview.libraryID);
+    if (!item || item.deleted || item.isEditable?.() === false) return { selections: null, previews };
+    if (String(item.getField?.("url") || "") !== (request.preview.sourceURL || "")
+      || normalizeItemDOI(item) !== request.preview.normalizedDOI) {
+      alertUser(win, localized("条目来源已变化，请重新打开审核窗口。", "The item's source has changed. Open a new review."));
+      return { selections: null, previews };
+    }
     const progress = openBatchPreflightDialog(toolkit, 1, copy);
     try {
       const fetched = await (request.doiOnly ? preflightDOIBatch : preflightBatch)([item], {
@@ -475,7 +483,7 @@ async function runBatchWorkflowWith(
   if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("reviewing");
   if (!release) {
-    alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly."));
+    alertUser(win, localized("正在处理另一项任务。请等待任务完成。", "Another task is in progress. Wait for it to finish."));
     return null;
   }
   try {
@@ -543,7 +551,7 @@ export async function retryLastFailedBatch(win?: any, ztoolkit?: any, expectedBa
   if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("retrying");
   if (!release) {
-    alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly."));
+    alertUser(win, localized("正在处理另一项任务。请等待任务完成。", "Another task is in progress. Wait for it to finish."));
     return null;
   }
   try {
@@ -637,7 +645,7 @@ export async function rollbackLatestBatch(win?: any, ztoolkit?: any) {
   const dialogScope = getPluginDialogScope();
   if (!isPluginDialogScopeActive(dialogScope)) return null;
   const release = tryAcquireWorkflowActivity("rolling-back");
-  if (!release) { alertUser(win, localized("另一项检查或更新还没结束，请稍后再试。", "Another check or update is still running. Try again shortly.")); return null; }
+  if (!release) { alertUser(win, localized("正在处理另一项任务。请等待任务完成。", "Another task is in progress. Wait for it to finish.")); return null; }
   let progress: ExecutionDialog | null = null;
   try {
     const copy = await resolveDialogCopy(win);

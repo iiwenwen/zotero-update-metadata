@@ -44,6 +44,78 @@ describe("UI功能对齐（真实调用链的离线边界）", function () {
     expect(api.collectBatchSelections([p], { getElementById: () => ({ checked: false }) })).to.deep.equal([]);
     expect(find(layout, "zmta-batch-identity-0").properties.checked).to.equal(false);
   });
+  function failedPreview(outcome, routeId = "url.web", extra = {}) {
+    return { ...preview(), status: "failed", fields: [], attempts: [{ routeId, attempt: 1,
+      outcome, fetchedAt: "2026-10-31T00:00:00Z", inputIdentifiers: [], returnedIdentifiers: [],
+      sourceId: "fixture", ...extra }] };
+  }
+  function recoveryButtons(p) {
+    return all(api.buildBatchDialogLayout([p], copy, {}, { onRefresh() {} }).layout)
+      .filter(n => n.tag === "button" && ["重新查找", "改用 DOI 查找"].includes(n.properties?.textContent));
+  }
+  it("来源不支持时不提供原样重查；DOI也不支持时不再提供换源", function () {
+    const p = failedPreview("unsupported");
+    expect(recoveryButtons(p)).to.have.lengthOf(0);
+    p.normalizedDOI = "10.1234/a";
+    expect(recoveryButtons(p).map(n => n.properties.textContent)).to.deep.equal(["改用 DOI 查找"]);
+    p.attempts.push({ ...p.attempts[0], routeId: "doi.search" });
+    expect(recoveryButtons(p)).to.have.lengthOf(0);
+    expect(text(api.buildBatchDialogLayout([p], copy).layout)).to.include("不支持此来源");
+  });
+  it("每种路线结果都明确区分临时可重查与不可原样重放", function () {
+    for (const outcome of api.ATTEMPT_OUTCOMES) {
+      const p = failedPreview(outcome, "url.web", { retryable: true });
+      const retryable = ["fetch-failed", "retry-exhausted"].includes(outcome);
+      expect(api.canRefreshReview(p, false), outcome).to.equal(retryable);
+      expect(recoveryButtons(p).some(n => n.properties.textContent === "重新查找"), outcome).to.equal(retryable);
+    }
+    for (const status of ["pending", "skipped", "ready", "applied", "partial", "rolled-back", "rollback-conflict", "blocked"]) {
+      const p = { ...failedPreview("fetch-failed", "url.web", { retryable: true }), status, normalizedDOI: "10.1234/a" };
+      expect(recoveryButtons(p), status).to.have.lengthOf(0);
+    }
+  });
+  it("拒绝和限流不被新建预检按钮绕过；未知及确定性错误不当作临时网络故障", function () {
+    for (const httpStatus of [401, 403, 429, 404, 500]) {
+      const p = { ...failedPreview("fetch-failed", "url.web", { retryable: true,
+        diagnostic: { stage: "document-fetch", httpStatus, retryAfterMs: 60000, message: "fixture" } }), normalizedDOI: "10.1234/a" };
+      expect(recoveryButtons(p), String(httpStatus)).to.have.lengthOf(0);
+    }
+    expect(recoveryButtons(failedPreview("fetch-failed"))).to.have.lengthOf(0);
+    for (const outcome of ["identifier-conflict", "identity-evidence-missing", "item-type-conflict", "version-ambiguous", "multiple-results", "invalid-response"]) {
+      expect(recoveryButtons({ ...failedPreview(outcome), normalizedDOI: "10.1234/a" }), outcome).to.have.lengthOf(0);
+    }
+  });
+  it("临时DOI失败只重试DOI，不重放已经不支持的网页路线", function () {
+    const p = failedPreview("retry-exhausted", "doi.search", { retryable: true });
+    p.normalizedDOI = "10.1234/a";
+    p.attempts.unshift({ ...p.attempts[0], routeId: "url.web", outcome: "unsupported", retryable: false });
+    const calls = [];
+    const layout = api.buildBatchDialogLayout([p], copy, {}, { onRefresh: (...args) => calls.push(args) }).layout;
+    const action = all(layout).find(n => n.properties?.textContent === "重新查找");
+    expect(action).to.exist;
+    action.listeners[0].listener();
+    expect(calls).to.deep.equal([[0, true]]);
+    p.attempts[p.attempts.length - 1].outcome = "unsupported";
+    action.listeners[0].listener();
+    expect(calls).to.have.lengthOf(1); // 旧事件不能绕过新状态
+  });
+  it("英文异常标题与恢复按钮使用相同的状态门控", function () {
+    const { copy: english } = loadDialogCopy("en-US");
+    const layout = api.buildBatchDialogLayout([failedPreview("unsupported")], english, {}, { onRefresh() {} }).layout;
+    expect(text(layout)).to.include("Source not supported");
+    expect(text(layout)).not.to.include("Search again");
+  });
+  it("英文环境在宿主字段标签缺失时仍显示英文后备名", function () {
+    const originalLocale = Zotero.locale;
+    const originalFields = Zotero.ItemFields;
+    try {
+      Zotero.locale = "en-US";
+      Zotero.ItemFields = { getLocalizedString() { throw new Error("unavailable"); } };
+      const { copy: english } = loadDialogCopy("en-US");
+      const layout = api.buildBatchDialogLayout([preview()], english).layout;
+      expect(all(layout).find(n => n.classList?.includes("zmta-field-name")).properties.textContent).to.equal("Publisher");
+    } finally { Zotero.locale = originalLocale; Zotero.ItemFields = originalFields; }
+  });
   it("重试只显示原失败且已选择的字段，变化值不预选", function () {
     const p = preview(); p.fields.push({ field: "title", local: "旧", incoming: "新", defaultChecked: false });
     const original = { itemID: 1, itemKey: "A", fields: [{ ...p.fields[0], incoming: "先前值" }], attachments: [], notes: [] };
@@ -88,7 +160,7 @@ describe("UI功能对齐（真实调用链的离线边界）", function () {
       { field: "url", status: "applied", before: "https://example.org/?token=private", after: "https://example.org/new" },
       { field: "title", status: "failed", recoveryRequired: true, afterUnknown: true },
     ], createdItems: [] }] });
-    expect(text(scope)).to.include("人工核对"); expect(text(scope)).to.include("原网址"); expect(text(scope)).not.to.include("token=private");
+    expect(text(scope)).to.include("结果待核对"); expect(text(scope)).to.include("更新前的网址"); expect(text(scope)).not.to.include("token=private");
   });
   it("原失败子内容变化后不展示为空白可执行审核", function () {
     const p = preview(); p.fields = []; p.notes = [{ batchOperationId: "note-new", note: "新内容" }];
@@ -153,12 +225,12 @@ describe("UI功能对齐（真实调用链的离线边界）", function () {
   });
   it("重试结果使用明确标题，普通更新与撤销保留各自标题", async function () {
     const result = { batchId: "retry", applied: 1, partial: 0, skipped: 0, failed: 0, items: [] };
-    expect(text(resultLayout(result))).to.include("条目信息更新结果");
+    expect(text(resultLayout(result))).to.include("更新结果");
     expect(text(resultLayout(result, true))).to.include("撤销结果");
-    expect(text(resultLayout(result, false, true))).to.include("本次重试结果");
+    expect(text(resultLayout(result, false, true))).to.include("重试结果");
     const pending = api.showWorkflowResult(result, { Dialog }, { copy, retry: true, onRecords: async () => {} });
     const dialog = Dialog.instances[0];
-    expect(text(dialog.layout)).to.include("本次重试结果");
+    expect(text(dialog.layout)).to.include("重试结果");
     dialog.click("zmta-result-done");
     expect(await pending).to.equal("done");
   });

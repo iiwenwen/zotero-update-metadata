@@ -127,6 +127,16 @@ describe("DOI fallback resolver（纯 fake route）", function () {
     expect(calls.map((call) => `${call.id}:${call.request.attempt}`)).to.deep.equal(["doi.search:1"]);
     expect(resolved.candidate.evidence.routeId).to.equal("doi.search");
   });
+  it("解析结果保留临时故障的恢复依据，不让不支持来源变成可重查", async function () {
+    const transient = setup([failure("url.web", 1, "fetch-failed", true)], []);
+    const failed = await transient.resolver.resolve({ item, url: "https://example.test/paper" });
+    expect(failed.attempts.at(-1).outcome).to.equal("retry-exhausted");
+    expect(failed.attempts.at(-1).retryable).to.equal(true);
+    const unsupported = setup([failure("url.web", 1, "unsupported", false)], []);
+    const ended = await unsupported.resolver.resolve({ item, url: "https://example.test/paper" });
+    expect(ended.attempts.at(-1).retryable).to.equal(false);
+    expect(unsupported.calls).to.have.lengthOf(1);
+  });
 
   for (const outcome of ["unsupported", "no-result"]) {
     it(`Web ${outcome} 后有 DOI 才串行进入 Search`, async function () {
@@ -149,7 +159,7 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       );
       const resolved = await resolver.resolve({ item, url: "https://example.test/paper", doi: "10.1000/test" });
       expect(resolved.terminalOutcome).to.equal("blocked");
-      expect(resolved.message).to.include("未进行更新");
+      expect(resolved.message).to.include("未更新");
       expect(resolved.message).not.to.include(outcome);
       expect(calls.map((call) => call.id)).to.deep.equal(["url.web"]);
     });
@@ -160,7 +170,7 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       const { resolver, calls } = setup([], [failure("doi.search", 1, outcome)]);
       const resolved = await resolver.resolve({ item, doi: "10.1000/test" });
       expect(resolved.terminalOutcome).to.equal("blocked");
-      expect(resolved.message).to.include("未进行更新");
+      expect(resolved.message).to.include("未更新");
       expect(resolved.message).not.to.include(outcome);
       expect(resolved.candidate).to.equal(null);
       expect(calls).to.have.length(1);
@@ -197,8 +207,8 @@ describe("DOI fallback resolver（纯 fake route）", function () {
     });
     const first = await resolver.resolveDOI({ item, doi: "10.1000/a" });
     const second = await resolver.resolveDOI({ item, doi: "10.1000/b" });
-    expect(first.message).to.include("later DOI searches in this batch have stopped");
-    expect(second.message).to.include("DOI search was not sent");
+    expect(first.message).to.include("The DOI service limited requests");
+    expect(second.message).to.include("No DOI request was sent");
     expect(calls).to.have.length(1);
   });
 
@@ -214,7 +224,7 @@ describe("DOI fallback resolver（纯 fake route）", function () {
       await resolver.resolveDOI({ item, doi: "10.1000/a" });
       const result = await resolver.resolve({ item, url: "https://example.test/item", doi: "10.1000/b" });
       expect(calls.map(call => call.id)).to.deep.equal(["doi.search", "url.web"]);
-      expect(result.message).to.include(locale === "zh-CN" ? "未发起 DOI 查询" : "DOI search was not sent");
+      expect(result.message).to.include(locale === "zh-CN" ? "未发起 DOI 请求" : "No DOI request was sent");
     }
   });
 
@@ -243,7 +253,7 @@ describe("DOI fallback resolver（纯 fake route）", function () {
         doiSearchRoute: fakeRoute("doi.search", [], []), locale,
       });
       const result = await resolver.resolve({ item, url: "https://example.test/book" });
-      expect(result.message).to.include(locale === "zh-CN" ? "没有识别出标题" : "title could not be read");
+      expect(result.message).to.include(locale === "zh-CN" ? "未获取到标题" : "no title was retrieved");
       expect(result.message).not.to.include("No title specified");
       expect(result.message).not.to.include(locale === "zh-CN" ? "检查网络" : "Check your network");
       expect(result.attempts[0].diagnostic.message).to.include("No title specified");

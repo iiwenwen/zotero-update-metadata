@@ -374,7 +374,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
       }),
     });
     expect(previews[0].status).to.equal("failed");
-    expect(previews[0].message).to.include("同源验证失败");
+    expect(previews[0].message).to.include("来源与条目网址不一致");
     expect(item.counters).to.deep.equal({ set: 0, save: 0 });
   });
 
@@ -560,7 +560,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
     expect(item.fields.publisher).to.equal("旧值");
     expect(item.counters.save).to.equal(2, "首次写入后应再保存一次补偿值");
     expect(result.items[0].status).to.equal("failed");
-    expect(result.items[0].operations[0].message).to.include("已恢复审核前字段值");
+    expect(result.items[0].operations[0].message).to.include("已恢复更新前的内容");
   });
 
   it("附件与 note 的 applied 日志失败时回收刚创建的子条目", async function () {
@@ -603,7 +603,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
         if (event.status === "applied") throw new Error("journal unavailable");
       },
     });
-    expect(result.items[0].operations[0].message).to.include("严重");
+    expect(result.items[0].operations[0].recoveryRequired).to.equal(true);
     expect(result.items[0].operations[0].message).to.include("补偿也失败");
   });
 

@@ -102,7 +102,7 @@ describe("评审006修复C1/C2/C3（真实生产函数，内存宿主）", funct
       for (const settings of [{ noObserver: true }, { wrongToken: true }]) {
         const r = await childFlow({ kind, ...settings });
         expect(r.record.items[0].createdItems[0].fingerprint).to.equal(undefined);
-        expect(r.record.items[0].createdItems[0].message).to.include("保留该子项");
+        expect(r.record.items[0].createdItems[0].message).to.include("保留该内容");
         expect(r.trashes).to.equal(0);
       }
     });

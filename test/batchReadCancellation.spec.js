@@ -40,7 +40,7 @@ describe("只读候选取消与默认豆瓣诊断（离线）", function () {
     Zotero.locale = "zh-CN";
     try {
       const [preview] = await api.preflightBatch([item()]);
-      expect(preview.message).to.include("没有识别出标题");
+      expect(preview.message).to.include("未获取到标题");
       expect(preview.message).not.to.include("检查网络");
       expect(preview.attempts[0].diagnostic.stage).to.equal("translator-run");
       expect(preview.attempts[0].diagnostic.message).to.include("No title specified");

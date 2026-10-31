@@ -72,7 +72,7 @@ async function runRoute(
       return { candidate: null, attempts: [evidence], finalEvidence: evidence };
     }
     const result = await route.attempt({ ...baseRequest, attempt });
-    let evidence = result.evidence;
+    let evidence = Object.freeze({ ...result.evidence, retryable: !result.candidate && result.retryable });
     const diagnostic = evidence.diagnostic;
     const refused = !result.candidate && [401, 403, 429].includes(diagnostic?.httpStatus || 0);
     if (refused) {
@@ -117,89 +117,54 @@ function result(
 
 /** 不把内部枚举当作用户可操作的原因；详细依据仍留在 attempts。 */
 function blockedMessage(outcome: AttemptOutcome, english: boolean): string {
-  if (english) {
-    switch (outcome) {
-      case "identity-evidence-missing": return "The source does not provide enough information to confirm this is the same item. Nothing was updated. Check the item's identifiers and source.";
-      case "identifier-conflict": return "The source identifier differs from the current item. Nothing was updated. Check the item's identifiers and source.";
-      case "item-type-conflict": return "The source item type differs from the current item. Nothing was updated. Check the item and its source.";
-      case "version-ambiguous": return "The source version cannot be confirmed as the same as the current item. Nothing was updated. Check the item and its source.";
-      case "multiple-results": return "The source returned multiple results, so the matching item could not be determined. Nothing was updated. Check the item and its source.";
-      case "invalid-response": return "The source returned incomplete or unrecognizable information. Nothing was updated. Check the source or try again later.";
-      default: return "The source could not be safely matched to the current item. Nothing was updated. Check the item and its source.";
-    }
-  }
-  switch (outcome) {
-    case "identity-evidence-missing": return "来源信息不足，无法确认是否为同一条目；未进行更新。请核对条目的 DOI、ISBN 等编号和来源网址。";
-    case "identifier-conflict": return "来源返回的标识符与当前条目不一致；未进行更新。请核对条目的 DOI、ISBN 等编号和来源网址。";
-    case "item-type-conflict": return "来源返回的条目类型与当前条目不一致；未进行更新。请核对条目及其来源。";
-    case "version-ambiguous": return "无法确认来源与当前条目是否为同一版本；未进行更新。请核对条目及其来源。";
-    case "multiple-results": return "来源返回多个结果，无法确定对应的条目；未进行更新。请核对条目及其来源。";
-    case "invalid-response": return "来源返回的信息不完整或无法识别；未进行更新。请稍后重试或核对来源。";
-    default: return "无法安全确认来源与当前条目的一致性；未进行更新。请核对条目及其来源。";
-  }
+  const messages: Partial<Record<AttemptOutcome, readonly [string, string]>> = {
+    "identity-evidence-missing": ["来源信息不足，无法确认是否为同一条目。条目未更新。请核对来源网址及条目标识符。", "The source information is not sufficient to confirm the item identity. Nothing was updated. Review the source URL and item identifiers."],
+    "identifier-conflict": ["来源标识符与当前条目不一致。条目未更新。请核对 DOI、ISBN 或来源网址。", "The source identifier does not match the current item. Nothing was updated. Review the DOI, ISBN, or source URL."],
+    "item-type-conflict": ["来源条目类型与当前条目不一致。条目未更新。", "The source item type does not match the current item. Nothing was updated."],
+    "version-ambiguous": ["无法确认来源版本。条目未更新。请核对条目版本与来源。", "The source version could not be confirmed. Nothing was updated. Review the item version and source."],
+    "multiple-results": ["来源返回多个结果，无法确定对应条目。条目未更新。", "The source returned multiple results. The matching item could not be identified. Nothing was updated."],
+    "invalid-response": ["无法识别来源信息。条目未更新。请核对来源。", "The source information could not be read. Nothing was updated. Review the source."],
+  };
+  const message = messages[outcome] || ["无法确认来源与当前条目匹配。条目未更新。请核对来源。", "The source could not be matched to the current item. Nothing was updated. Review the source."];
+  return message[english ? 1 : 0];
 }
 
 function acquisitionMessage(evidence: AttemptEvidence, english: boolean): string {
+  const say = (zh: string, en: string) => english ? en : zh;
   const diagnostic = evidence.diagnostic;
   const doiSearch = evidence.routeId === "doi.search";
   if (!doiSearch && diagnostic?.stage === "translator-run"
     && (!diagnostic.httpStatus || diagnostic.httpStatus < 400)
     && /No title specified for item/i.test(diagnostic.message)) {
-    return english
-      ? "The source page was fetched, but its title could not be read. Nothing was updated. Try another source or retry later."
-      : "已读取来源网页，但没有识别出标题；原条目信息已保留。请更换来源或稍后重试。";
+    return say("已读取来源网页，但未获取到标题。条目未更新。", "The source page was read, but no title was retrieved. Nothing was updated.");
   }
   if (evidence.errorCode === "host-request-stopped") {
-    return english
-      ? doiSearch
-        ? "An earlier request was denied or limited, so later DOI searches in this batch have stopped. This item's DOI search was not sent; it was not updated."
-        : "An earlier request to this source was denied or limited, so further requests to it in this batch have stopped. No request to this source was made for this item; it was not updated."
-      : doiSearch
-        ? "此前访问被拒绝，或请求过于频繁，本次更新后续 DOI 查询已停止。本条目未发起 DOI 查询，也未更新。"
-        : "此前对此来源的访问被拒绝，或请求过于频繁，本次更新对该来源的后续请求已停止。本条目未向该来源发起请求，也未更新。";
-  }
-  if (english && doiSearch && diagnostic?.httpStatus === 429) {
-    const wait = diagnostic.retryAfterMs;
-    return wait === undefined
-      ? "The DOI search was limited; later DOI searches in this batch have stopped. This item was not updated. No reliable wait time was provided; try again later."
-      : `The DOI search was limited; later DOI searches in this batch have stopped. This item was not updated. Wait at least ${Math.ceil(wait / 1000)} seconds before retrying.`;
-  }
-  if (english && doiSearch && (diagnostic?.httpStatus === 401 || diagnostic?.httpStatus === 403)) {
-    return "The DOI search was denied; later DOI searches in this batch have stopped. This item was not updated. Check your access permissions.";
-  }
-  if (!english && doiSearch && diagnostic?.httpStatus === 429) {
-    const wait = diagnostic.retryAfterMs;
-    return wait === undefined
-      ? "DOI 查询过于频繁，服务暂时不接受请求，本次更新后续 DOI 查询已停止，本条目未更新；未提供可靠等待时间，请稍后手动重试。"
-      : `DOI 查询过于频繁，服务暂时不接受请求，本次更新后续 DOI 查询已停止，本条目未更新。请至少等待 ${Math.ceil(wait / 1000)} 秒后手动重试。`;
-  }
-  if (!english && doiSearch && (diagnostic?.httpStatus === 401 || diagnostic?.httpStatus === 403)) {
-    return "DOI 查询被拒绝，本次更新后续 DOI 查询已停止，本条目未更新。请确认是否有访问权限。";
-  }
-  if (english) {
-    if (diagnostic?.httpStatus === 429) {
-      const wait = diagnostic.retryAfterMs;
-      return wait === undefined
-        ? "The source limited access, so further requests to it in this batch have stopped. This item was not updated. No reliable wait time was provided; try again later."
-        : `The source limited access, so further requests to it in this batch have stopped. This item was not updated. Wait at least ${Math.ceil(wait / 1000)} seconds before retrying.`;
-    }
-    if (diagnostic?.httpStatus === 401 || diagnostic?.httpStatus === 403) return "The source denied access, so further requests to it in this batch have stopped. This item was not updated. Check your access permissions.";
-    if (evidence.outcome === "unsupported") return "This source is not currently supported. Nothing was updated. Check the source address or the item's DOI.";
-    if (evidence.outcome === "no-result") return "The source returned no usable metadata. Nothing was updated. Check the source address or the item's DOI.";
-    return "Could not retrieve source information. Nothing was updated. Check your network and source address, then try again.";
+    return doiSearch
+      ? say("本次已停止 DOI 查找。本条目未发起 DOI 请求，也未更新。", "Further DOI requests in this update have stopped. No DOI request was sent for this item. Nothing was updated.")
+      : say("本次已停止向此来源发送请求。本条目未获取新信息，也未更新。", "Further requests to this source have stopped. No request was sent for this item. Nothing was updated.");
   }
   if (diagnostic?.httpStatus === 429) {
     const wait = diagnostic.retryAfterMs;
+    const source = doiSearch ? say("DOI 服务", "The DOI service") : say("来源", "The source");
     return wait === undefined
-      ? "来源限制了访问，已停止本次更新对该来源的请求，本条目未更新；未提供可靠等待时间，请稍后手动重试。"
-      : `来源限制了访问，已停止本次更新对该来源的请求，本条目未更新。请至少等待 ${Math.ceil(wait / 1000)} 秒后手动重试。`;
+      ? say(`${source}限制了请求。条目未更新。请稍后重新查找。`, `${source} limited requests. Nothing was updated. Try again later.`)
+      : say(`${source}限制了请求。条目未更新。请至少等待 ${Math.ceil(wait / 1000)} 秒后重试。`, `${source} limited requests. Nothing was updated. Wait at least ${Math.ceil(wait / 1000)} seconds before trying again.`);
   }
   if (diagnostic?.httpStatus === 401 || diagnostic?.httpStatus === 403) {
-    return "来源拒绝访问，已停止本次更新对该来源的请求，本条目未更新。请确认是否有访问权限。";
+    return doiSearch
+      ? say("DOI 查找被拒绝。条目未更新。请确认访问权限。", "The DOI request was denied. Nothing was updated. Review your access permissions.")
+      : say("来源拒绝访问。条目未更新。请确认访问权限。", "The source denied access. Nothing was updated. Review your access permissions.");
   }
-  if (evidence.outcome === "unsupported") return "当前来源暂不支持获取条目信息；未进行更新。请检查来源地址或条目的 DOI。";
-  if (evidence.outcome === "no-result") return "来源没有返回可用的条目信息；未进行更新。请检查来源地址或条目的 DOI。";
-  return "无法获取来源信息；未进行更新。请检查网络及来源地址后重试。";
+  if (evidence.outcome === "unsupported") {
+    // 仅明确的缺转换器证据才能说明缺转换器；不能从unsupported枚举猜原因。
+    if (evidence.errorCode === "translator-missing") return doiSearch
+      ? say("没有可用的 DOI 转换器。条目未更新。", "No DOI translator is available. Nothing was updated.")
+      : say("此网址没有可用的转换器。条目未更新。", "No translator is available for this URL. Nothing was updated.");
+    return say("不支持此来源。条目未更新。", "This source is not supported. Nothing was updated.");
+  }
+  if (evidence.outcome === "no-result") return say("来源未返回可用信息。条目未更新。请核对网址或 DOI。", "The source returned no usable information. Nothing was updated. Review the URL or DOI.");
+  if (evidence.retryable === true || evidence.outcome === "retry-exhausted") return say("无法连接来源。条目未更新。请核对网络连接后重试。", "The source could not be reached. Nothing was updated. Review the network connection before trying again.");
+  return say("无法获取来源信息。条目未更新。请核对来源。", "Source information could not be retrieved. Nothing was updated. Review the source.");
 }
 
 function webFailureBlocks(evidence: AttemptEvidence): boolean {

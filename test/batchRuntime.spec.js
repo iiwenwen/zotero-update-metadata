@@ -181,7 +181,7 @@ describe("batchRuntime（核心与持久日志接线）", function () {
     api.resetBatchRuntimeForTests();
   });
 
-  it("查看更新记录只读打开 journal 快照，不触发 storage write", async function () {
+  it("查看更新记录…只读打开 journal 快照，不触发 storage write", async function () {
     class CountingStorage extends api.MemoryBatchJournalStorage {
       constructor(value) { super(value); this.writes = 0; }
       async write(value) { this.writes += 1; await super.write(value); }
