@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Zotero-10-CC2936?style=flat-square" alt="支持 Zotero 10">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="使用 TypeScript">
-  <img src="https://img.shields.io/badge/版本-0.5.1_正式版-blue?style=flat-square" alt="0.5.1 正式版">
+  <a href="https://github.com/iiwenwen/zotero-update-metadata/releases/latest"><img src="https://img.shields.io/badge/下载-最新正式版-blue?style=flat-square" alt="下载最新正式版"></a>
   <img src="https://img.shields.io/badge/许可-待定-lightgrey?style=flat-square" alt="许可证尚未确定">
 </p>
 
@@ -37,7 +37,7 @@
 
 ## 当前支持的元数据更新
 
-以下为 **0.5.1** 的已实现范围。插件更新的是文库中已有的书目条目，数据来自 Zotero 当前可用的转换器；具体能取到哪些字段，取决于来源实际返回的内容。
+插件更新的是文库中已有的书目条目，数据来自 Zotero 当前可用的转换器；具体能取到哪些字段，取决于来源实际返回的内容。以下说明当前已实现的范围，版本变更见 [CHANGELOG](CHANGELOG.md)。
 
 ### 支持的来源与查找方式
 
@@ -66,7 +66,7 @@
 
 ## 界面
 
-截图来自 Zotero 10，使用演示条目。点击图片可查看大图。
+以下为较早版本的界面示意，使用演示条目；当前按钮名称和操作步骤见[使用](#使用)。点击图片可查看大图。
 
 <table>
   <tr>
@@ -74,26 +74,26 @@
     <th>插件设置</th>
   </tr>
   <tr>
-    <td valign="top"><a href="docs/images/item-pane.jpg"><img src="docs/images/item-pane.jpg" width="420" alt="条目侧栏中的审核更新、查看批次状态和设置按钮"></a></td>
-    <td valign="top"><a href="docs/images/preferences.jpg"><img src="docs/images/preferences.jpg" width="420" alt="插件设置：显示侧栏、默认勾选新增附件、默认勾选新增笔记"></a></td>
+    <td valign="top"><a href="docs/images/item-pane.jpg"><img src="docs/images/item-pane.jpg" width="420" alt="较早版本的条目侧栏示意"></a></td>
+    <td valign="top"><a href="docs/images/preferences.jpg"><img src="docs/images/preferences.jpg" width="420" alt="较早版本的插件设置示意：显示入口、附件与笔记默认勾选"></a></td>
   </tr>
 </table>
 
 ## 安装
 
-需要 **Zotero 10 桌面版**，目前主要在 macOS 上使用。
+支持 **Zotero 10 桌面版**，主要在 macOS 上验证。
 
-> **当前正式版：[0.5.1](https://github.com/iiwenwen/zotero-update-metadata/releases/latest)**。下载 `zotero-update-metadata.xpi` 安装。此版使用独立插件 ID；从旧 1.x 或测试版切换时需手动安装，并先禁用或移除测试版，避免两个版本同时运行。
+1. 从[最新正式版下载页](https://github.com/iiwenwen/zotero-update-metadata/releases/latest)下载 **`zotero-update-metadata.xpi`**。
+2. 打开 Zotero，进入 **工具 → 插件**。
+3. 点击齿轮菜单，选择 **从文件安装插件**，打开下载的 `.xpi` 文件并完成安装。
 
-1. 打开 Zotero，进入 **工具 → 插件**。
-2. 点齿轮菜单，选 **从文件安装插件**。
-3. 选中 `.xpi`，按提示完成安装。
-
-装之前备份文库，先用少量条目试用——撤销不能代替备份。
+安装前备份文库，首次使用先用少量条目试用。若之前装过本项目的旧版或测试插件，安装后检查插件列表，只保留一个启用的元数据更新插件，避免重复运行。
 
 ### 后续更新
 
-安装正式版后，由 Zotero 内置插件管理器检查和安装后续正式更新；也可在 **工具 → 插件** 的齿轮菜单中手动检查更新。使用同一正式 ID 的 `0.4.1`、`0.4.2` 可更新到 `0.5.1`。旧 1.x 和 `@local` 测试版不会跨 ID 自动迁移，首次切换仍需手动安装。插件详情中的主页指向本仓库，问题请到 [Issues](https://github.com/iiwenwen/zotero-update-metadata/issues) 反馈。
+后续正式更新通过 Zotero 的插件管理器获取。需要手动检查时，进入 **工具 → 插件**，在齿轮菜单中选择 **检查更新**。
+
+若未检测到更新，可从[最新正式版下载页](https://github.com/iiwenwen/zotero-update-metadata/releases/latest)重新下载安装包，再按上述步骤安装。每次发布的具体变化见 [CHANGELOG](CHANGELOG.md)。
 
 ## 使用
 
@@ -129,29 +129,29 @@
 
 **会动已有的附件和笔记吗？** 不会，只允许新增，但不会自动去重。
 
-**支持 Zotero 7/8/9 或移动端吗？** 不支持，只针对 Zotero 10 桌面版。
+**支持其他 Zotero 版本或移动端吗？** 当前兼容范围见[安装](#安装)，不支持移动端。
 
 ## 技术栈与依赖
 
 **技术栈**：TypeScript 直接调用 Zotero 原生扩展 API，界面用 XHTML/XUL + DOM API 复用 Zotero 控件，不引入前端框架；多语言用 Fluent（`.ftl`），构建打包用 zotero-plugin-scaffold + esbuild，测试用 Mocha + Chai。
 
-**用到的第三方仓库**（版本以 `package-lock.json` 为准）：
+**用到的第三方仓库**（依赖清单与精确版本分别以 [package.json](package.json) 和 [package-lock.json](package-lock.json) 为准）：
 
-| 仓库 | 版本 | 用途 |
-| --- | --- | --- |
-| [zotero-plugin-toolkit](https://github.com/windingwind/zotero-plugin-toolkit) | 5.2.0 | 运行时工具库（对话框等），唯一随插件打包的第三方代码 |
-| [zotero-plugin-scaffold](https://github.com/northword/zotero-plugin-scaffold) | 0.8.8 | 开发服务、热重载、构建与 XPI 打包 |
-| [esbuild](https://github.com/evanw/esbuild) | 0.28.2 | 打包插件源码与测试 bundle |
-| [zotero-types](https://github.com/windingwind/zotero-types) | 4.1.3 | Zotero API 类型定义 |
-| [Mocha](https://github.com/mochajs/mocha) | 11.8.0 | 测试运行器 |
-| [Chai](https://github.com/chaijs/chai) | 6.2.2 | 断言库 |
-| [@types/mocha](https://github.com/DefinitelyTyped/DefinitelyTyped) / [@types/chai](https://github.com/DefinitelyTyped/DefinitelyTyped) | 10.0.10 / 5.2.3 | 类型声明 |
+| 仓库 | 用途 |
+| --- | --- |
+| [zotero-plugin-toolkit](https://github.com/windingwind/zotero-plugin-toolkit) | 随插件打包的运行时工具库（对话框等） |
+| [zotero-plugin-scaffold](https://github.com/northword/zotero-plugin-scaffold) | 开发服务、热重载、构建与 XPI 打包 |
+| [esbuild](https://github.com/evanw/esbuild) | 打包插件源码与测试 bundle |
+| [zotero-types](https://github.com/windingwind/zotero-types) | Zotero API 类型定义 |
+| [Mocha](https://github.com/mochajs/mocha) | 测试运行器 |
+| [Chai](https://github.com/chaijs/chai) | 断言库 |
+| [@types/mocha](https://github.com/DefinitelyTyped/DefinitelyTyped) / [@types/chai](https://github.com/DefinitelyTyped/DefinitelyTyped) | 类型声明 |
 
 间接依赖与许可见 [package-lock.json](package-lock.json) 和[第三方说明](addon/content/third-party-notices.txt)。
 
 ## 本地开发
 
-需要 Node.js 24、Git；检查脚本还需要 Python 3.9+。
+使用 [.nvmrc](.nvmrc) 指定的 Node.js 版本，并确保 Git 和 npm 可用。运行完整检查还需要 Python 和 ripgrep，环境可参考 [CI 工具配置](.github/actions/setup/action.yml)。
 
 ```bash
 git clone https://github.com/iiwenwen/zotero-update-metadata.git
@@ -165,12 +165,13 @@ npm run build
 | 命令 | 说明 |
 | --- | --- |
 | `npm start` | 开发服务，默认模拟获取结果，需要本地 Zotero 环境配置 |
-| `npm run start:live` | 使用真实来源获取信息 |
+| `npm run start:live` | 启动隔离开发客户端，访问真实来源获取信息 |
 | `npm run test:core` | 离线核心测试 |
 | `npm run test:ui` | 离线界面与工作流测试 |
 | `npm run check` | 构建并检查基本安全规则 |
+| `npm run ci` | 完整离线检查，包括公开内容、版本、测试及生产构建 |
 
-开发配置与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，维护者推送源码后运行 `npm run release` 即可发版，详见 [RELEASING.md](RELEASING.md)。
+开发配置与数据保护要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。创建或合并 PR 会触发 CI 检查，不会自动发布安装包；发布由维护者在代码合入 main 后手动运行 `npm run release`，交给 GitHub Actions 构建、验包和上传，详见 [RELEASING.md](RELEASING.md)。
 
 ## 反馈与许可
 
