@@ -61,6 +61,7 @@ describe("batchConfirmDialog", function () {
   }
 
   function sectionByTitle(detail, title) {
+    if (title === "字段") return (detail.children || []).find(child => child.classList?.includes("zmta-fields"));
     return (detail.children || []).find((child) => child.classList?.includes("zmta-section")
       && child.children?.[0]?.children?.[0]?.properties?.textContent === title);
   }
@@ -103,8 +104,7 @@ describe("batchConfirmDialog", function () {
     const input = dialog.nodes.get("zmta-batch-field-0-0");
     input.checked = false;
     const pane = dialog.nodes.get("zmta-batch-detail-pane"); pane.scrollTop = 812;
-    const select = dialog.nodes.get("zmta-review-navigation-select");
-    select.value = "2:BOOK2"; select.emit("change");
+    dialog.nodes.get("zmta-review-navigation-row-1").emit("click");
     expect(pane.scrollTop).to.equal(0);
     expect(dialog.nodes.get("zmta-batch-detail-1").style.display).to.equal("block");
     expect(dialog.nodes.get("zmta-batch-field-0-0")).to.equal(input);
@@ -117,10 +117,10 @@ describe("batchConfirmDialog", function () {
     const layout = dialogLayout(previews());
     expect(layout.id).to.equal("zmta-batch-review");
     const [header, body, footer] = layout.children;
-    expect(header.children[0].properties.textContent).to.equal("确认条目信息更新");
+    expect(header.children[0].children[0].properties.textContent).to.equal("3 个条目 · 1 个可更新");
     const selectionSummary = findNode(footer, (node) => node.id === "zmta-batch-selection-summary");
     expect(selectionSummary.properties.textContent).to.equal("已选择 1 个条目 · 1 项更新");
-    expect(header.children[1].properties.textContent).to.equal("3 个条目 · 1 个可更新");
+    expect(header.children[1].properties.textContent).to.equal("勾选所有条目的空白字段");
     const [left, right] = body.children;
     expect(left.tag).to.equal("nav");
     expect(left.id).to.equal("zmta-review-navigation");
@@ -130,16 +130,16 @@ describe("batchConfirmDialog", function () {
     const source = findByClass(readyDetail, "zmta-detail-source");
     expect(source.classList).to.include("zmta-detail-source");
     expect(source.children[0].properties.textContent).to.equal("来源：豆瓣读书");
-    expect(source.children).to.have.length(1);
+    expect(source.children).to.have.length(3);
     expect(JSON.stringify(readyDetail)).not.to.include("https://book.douban.com/subject/1/");
-    expect(sectionByTitle(readyDetail, "字段").children[0].children[1].properties.textContent).to.equal("2 项");
+    expect(sectionByTitle(readyDetail, "字段").children[0].tag).to.equal("table");
     expect(sectionByTitle(readyDetail, "新增附件")).not.to.equal(undefined);
     expect(sectionByTitle(readyDetail, "新增笔记")).not.to.equal(undefined);
     expect(sectionByTitle(readyDetail, "作者与贡献者")).to.equal(undefined);
     expect(findByClass(right.children[1], "zmta-detail-source")).to.equal(undefined);
     expect(findByClass(right.children[1], "zmta-item-message").properties.textContent).to.equal("无豆瓣 URL");
     const headers = findNode(readyDetail, (node) => node.tag === "thead");
-    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "字段", "现有内容", "新内容"]);
+    expect(headers.children[0].children.map((node) => node.properties.textContent)).to.deep.equal(["采用", "项目", "现有内容", "新内容"]);
   });
 
   it("字段使用宿主名称和可读后备名，来源内部ID不进入普通视图", function () {
@@ -162,9 +162,9 @@ describe("batchConfirmDialog", function () {
     const layout = dialogLayout(previews(), { showTechnicalDetails: true });
     const detail = layout.children[1].children[1].children[0];
     const source = findByClass(detail, "zmta-detail-source");
-    expect(source.children[1].tag).to.equal("details");
-    expect(source.children[1].attributes?.open).to.equal(undefined);
-    expect(source.children[1].children[1].properties.textContent).to.include("https://book.douban.com/subject/1/");
+    expect(source.children.at(-1).tag).to.equal("details");
+    expect(source.children.at(-1).attributes?.open).to.equal(undefined);
+    expect(source.children.at(-1).children[1].properties.textContent).to.include("https://book.douban.com/subject/1/");
   });
 
   it("布局复用系统主题并保留响应式内容排版", function () {
@@ -323,9 +323,10 @@ describe("batchConfirmDialog", function () {
     };
     const layout = dialogLayout(data);
     const detail = layout.children[1].children[1].children[0];
-    const section = sectionByTitle(detail, "作者与贡献者");
+    const section = sectionByTitle(detail, "字段");
     const row = findByClass(section, "zmta-creators-row");
-    expect(section.children[0].children[1].properties.textContent).to.equal("整组选择");
+    expect(findByClass(row, "zmta-field-hint").properties.textContent).to.equal("整组选择");
+    expect(sectionByTitle(detail, "作者与贡献者")).to.equal(undefined);
     const input = findNode(row, (node) => node.id === "zmta-batch-creators-0");
     expect(input.properties.checked).to.equal(false);
     expect(findByClass(row, "zmta-creators-incoming").children.map((entry) => entry.properties.textContent)).to.deep.equal([
@@ -353,7 +354,7 @@ describe("batchConfirmDialog", function () {
     const layout = dialogLayout(data);
     const identity = layout.children[1].children[1].children[0].children[1];
     expect(identity.classList).to.include("zmta-identity-review");
-    expect(identity.children[0].properties.checked).to.equal(false);
+    expect(findNode(identity, node => node.id === "zmta-batch-identity-0").properties.checked).to.equal(false);
 
     const documentFor = (confirmed) => ({
       getElementById: (id) => ({
@@ -386,7 +387,7 @@ describe("batchConfirmDialog", function () {
     }];
     const detail = dialogLayout(data, { showTechnicalDetails: true }).children[1].children[1].children[0];
     const source = findByClass(detail, "zmta-detail-source");
-    expect(source.children[1].children[1].properties.textContent)
+    expect(source.children.at(-1).children[1].properties.textContent)
       .to.include("document-fetch：页面获取失败：Unexpected status code 403，HTTP 403");
   });
 

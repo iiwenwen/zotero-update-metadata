@@ -1,6 +1,6 @@
 {
   "name": "zotero-update-metadata",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Zotero 插件：按已有 URL 或唯一标识符审核并更新条目元数据，全程留痕",
   "repository": {
     "type": "git",

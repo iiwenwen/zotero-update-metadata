@@ -28,7 +28,7 @@ class Dialog {
       getAttribute: name => attributes[name], setAttribute: (name, value) => { attributes[name] = value; },
       appendChild: child => { node.children.push(child); if (child.id) this.nodes.set(child.id, child); },
       addEventListener: (name, fn) => events.set(name, fn), removeEventListener: name => events.delete(name),
-      emit: name => events.get(name)?.({ currentTarget: node }),
+      emit: (name, event = {}) => events.get(name)?.({ currentTarget: node, ...event }),
       remove: () => { node.removed = true; if (node.id) this.nodes.delete(node.id); },
     };
     return node;

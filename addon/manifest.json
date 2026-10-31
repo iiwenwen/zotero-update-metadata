@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zotero 元数据更新",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "按条目已有 URL 或唯一标识符获取最新元数据，逐项审核后安全更新并留痕",
   "author": "iiwenwen",
   "icons": {
