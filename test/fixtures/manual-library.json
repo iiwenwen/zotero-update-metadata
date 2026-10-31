@@ -1,0 +1,120 @@
+{
+  "name": "ZMTA 手工测试（保留）",
+  "markerPrefix": "ZMTA-MANUAL-SEED: ",
+  "items": [
+    {
+      "seedId": "doi-only-vllm",
+      "itemType": "conferencePaper",
+      "fields": {
+        "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+        "DOI": "10.1145/3600006.3613165"
+      },
+      "scenario": "01 DOI 论文：补缺与审核",
+      "source": "https://doi.org/10.1145/3600006.3613165"
+    },
+    {
+      "seedId": "url-only-arxiv",
+      "itemType": "preprint",
+      "fields": {
+        "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+        "url": "https://arxiv.org/abs/2309.06180",
+        "date": "2023"
+      },
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Woosuk",
+          "lastName": "Kwon"
+        }
+      ],
+      "scenario": "02 URL 论文：来源获取",
+      "source": "https://arxiv.org/abs/2309.06180"
+    },
+    {
+      "seedId": "douban-fill-empty",
+      "itemType": "book",
+      "fields": {
+        "title": "围城",
+        "url": "https://book.douban.com/subject/1008145/",
+        "ISBN": "9787020024759"
+      },
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "钱锺书"
+        }
+      ],
+      "scenario": "03 图书：缺失字段补充",
+      "source": "https://book.douban.com/subject/1008145/"
+    },
+    {
+      "seedId": "douban-manual-conflict",
+      "itemType": "book",
+      "fields": {
+        "title": "围城",
+        "url": "https://book.douban.com/subject/1008145/",
+        "ISBN": "9787020024759",
+        "publisher": "手工测试出版社（确认替换前应保留）",
+        "date": "1990"
+      },
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "钱锺书"
+        }
+      ],
+      "scenario": "04 图书：手工字段及既有子项保护",
+      "source": "https://book.douban.com/subject/1008145/"
+    },
+    {
+      "seedId": "website-zotero",
+      "itemType": "webpage",
+      "fields": {
+        "title": "Zotero | Your personal research assistant",
+        "url": "https://www.zotero.org/"
+      },
+      "scenario": "05 网页：普通来源",
+      "source": "https://www.zotero.org/"
+    },
+    {
+      "seedId": "identity-conflict",
+      "itemType": "preprint",
+      "fields": {
+        "title": "Attention Is All You Need",
+        "url": "https://arxiv.org/abs/1706.03762",
+        "DOI": "10.1145/3600006.3613165"
+      },
+      "scenario": "06 标识冲突：应阻断",
+      "synthetic": true
+    },
+    {
+      "seedId": "missing-source",
+      "itemType": "book",
+      "fields": {
+        "title": "缺少来源：审核入口应禁用"
+      },
+      "scenario": "07 无来源：禁用入口",
+      "synthetic": true
+    },
+    {
+      "seedId": "invalid-source",
+      "itemType": "journalArticle",
+      "fields": {
+        "title": "无效来源：审核入口应禁用",
+        "url": "not-a-valid-url",
+        "DOI": "invalid-doi"
+      },
+      "scenario": "08 无效来源：禁用入口",
+      "synthetic": true
+    },
+    {
+      "seedId": "long-title",
+      "itemType": "book",
+      "fields": {
+        "title": "长标题与窄面板显示测试：用于检查元数据更新侧栏在不同窗口宽度、深色与浅色主题下的换行、图标清晰度、提示可读性以及审核按钮布局是否合理"
+      },
+      "scenario": "09 长标题与布局",
+      "synthetic": true
+    }
+  ]
+}

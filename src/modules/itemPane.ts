@@ -1,30 +1,34 @@
-import { PLUGIN_ID } from "../config";
-import { inspectBatchStatus, runBatchWorkflow } from "./batchRuntime";
-import { normalizeDOI } from "./update/resolution";
+import { PLUGIN_ID, PLUGIN_NAME } from "../config";
+import { localized } from "../utils/locale";
+import { DIALOG_FTL } from "./dialogCopy";
+import { runBatchWorkflow } from "./batchRuntime";
+import { normalizeDOI, normalizeHTTPURL } from "./update/resolution";
 import { getWorkflowActivity, subscribeWorkflowActivity } from "./workflowActivity";
-import { isItemPaneShown, METADATA_PREFS_PANE_ID } from "./itemPanePreferences";
+import { isItemPaneShown } from "./itemPanePreferences";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const MAIN_WINDOW_FTL = "zmta-mainWindow.ftl";
+// 对话框文案也挂到主窗口：about:blank 对话框不保证有自己的 document.l10n。
+const WINDOW_FTL_RESOURCES = [MAIN_WINDOW_FTL, DIALOG_FTL];
 let localizedWindows = new WeakSet<object>();
 
 /** 热升级复用旧主窗口时，同名link不会使DocumentL10n重新读资源。 */
 export function refreshMainWindowLocalization(win: any): void {
   if (!win) return;
   try {
-    win.MozXULElement?.insertFTLIfNeeded?.(MAIN_WINDOW_FTL);
+    for (const resource of WINDOW_FTL_RESOURCES) win.MozXULElement?.insertFTLIfNeeded?.(resource);
     if (localizedWindows.has(win)) return;
     const l10n = win.document?.l10n;
     if (!l10n?.removeResourceIds || !l10n?.addResourceIds) return;
     // 仅重置本插件资源；不替换document.l10n或移除宿主／其他插件资源。
-    l10n.removeResourceIds([MAIN_WINDOW_FTL]);
-    l10n.addResourceIds([MAIN_WINDOW_FTL]);
+    l10n.removeResourceIds(WINDOW_FTL_RESOURCES);
+    l10n.addResourceIds(WINDOW_FTL_RESOURCES);
     localizedWindows.add(win);
   } catch (error) {
     Zotero.debug(`[zmta] 主窗口本地化资源刷新失败：${error}`);
   }
 }
-type Eligibility = "none" | "multiple" | "unsupported" | "readonly" | "missing-source" | "ready" | "unavailable";
+type Eligibility = "none" | "multiple" | "unsupported" | "readonly" | "missing-source" | "invalid-source" | "ready" | "unavailable";
 interface ItemRef { libraryID: number; itemID: number; itemKey: string }
 interface PaneState {
   eligibility: Eligibility;
@@ -60,11 +64,14 @@ export function getItemPaneState(win: any, paneItem: any, editable: boolean, tab
       || item.isNote?.() || item.isAttachment?.() || item.isAnnotation?.()) return empty("unsupported");
     const ref = itemRef(item);
     if (!sameItem(ref, itemRef(paneItem)) || item.deleted) return empty("unavailable");
-    const url = String(item.getField?.("url") || "").trim();
-    const doi = normalizeDOI(item.getField?.("DOI"));
+    const rawURL = String(item.getField?.("url") || "").trim();
+    const rawDOI = String(item.getField?.("DOI") || "").trim();
+    const url = normalizeHTTPURL(rawURL);
+    const doi = normalizeDOI(rawDOI);
     const sourceHint = url && doi ? "both" : url ? "url" : doi ? "doi" : "none";
     const writable = editable === true && pane.canEdit?.() === true && item.isEditable?.() === true;
-    return { eligibility: !writable ? "readonly" : sourceHint === "none" ? "missing-source" : "ready", itemRef: ref, item, sourceHint };
+    return { eligibility: !writable ? "readonly" : sourceHint === "none"
+      ? (rawURL || rawDOI ? "invalid-source" : "missing-source") : "ready", itemRef: ref, item, sourceHint };
   } catch {
     return empty("unavailable");
   }
@@ -83,12 +90,10 @@ interface PaneContext {
 
 const defaultActions = {
   runBatchWorkflow,
-  inspectBatchStatus,
   getWorkflowActivity,
   subscribeWorkflowActivity,
   // @ts-expect-error - addon由bootstrap入口挂载
   getToolkit: () => addon.data.ztoolkit,
-  openPreferences: () => Zotero.Utilities.Internal.openPreferences(METADATA_PREFS_PANE_ID),
 };
 
 /** 一个控制器对应一次插件生命周期；注入动作仅供无宿主机制验证。 */
@@ -116,12 +121,14 @@ export class ItemPaneController {
     if (!manager?.registerSection || !manager?.unregisterSection) return;
     try {
       // @ts-expect-error - addon由bootstrap入口挂载
-      const icon = addon.data.rootURI + "content/icons/favicon.png";
+      const icon = addon.data.rootURI + "content/icons/favicon-16.svg";
+      // @ts-expect-error - addon由bootstrap入口挂载
+      const sidenavIcon = addon.data.rootURI + "content/icons/favicon-20.svg";
       const key = manager.registerSection({
         paneID: "metadata-update",
         pluginID: PLUGIN_ID,
         header: { l10nID: "zmta-item-pane-header", icon },
-        sidenav: { l10nID: "zmta-item-pane-sidenav", icon },
+        sidenav: { l10nID: "zmta-item-pane-sidenav", icon: sidenavIcon },
         onInit: (props: any) => this.initialize(props),
         onItemChange: (props: any) => {
           const context = this.contexts.get(props.body);
@@ -247,22 +254,15 @@ export class ItemPaneController {
     source.style.cssText = status.style.cssText = "margin:0;line-height:1.5;";
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    const review = create("button");
-    const inspect = create("button");
-    const settings = create("button");
-    for (const [button, id, action] of [
-      [review, "zmta-item-pane-review", () => this.review(context)],
-      [inspect, "zmta-item-pane-inspect", () => this.inspect(context)],
-      [settings, "zmta-item-pane-settings", () => this.settings(context)],
-    ] as const) {
-      button.type = "button";
-      button.style.cssText = "font:inherit;white-space:normal;max-width:100%;min-width:0;padding:5px 8px;";
-      this.localize(button, id);
-      const listener = () => { void action(); };
-      button.addEventListener("click", listener);
-      context.removeListeners.push(() => button.removeEventListener("click", listener));
-    }
-    root.append(source, status, review, inspect, settings);
+    // 与宿主duplicatesMergePane一致：XUL button、Fluent .label和command事件。
+    // 仅控制容器内的横向伸展，字号、行高、内边距和高度均沿用宿主。
+    const review = doc.createXULElement("button");
+    review.style.cssText = "align-self:stretch;min-width:0;margin:0;";
+    this.localize(review, "zmta-item-pane-review");
+    const listener = () => { void this.review(context); };
+    review.addEventListener("command", listener);
+    context.removeListeners.push(() => review.removeEventListener("command", listener));
+    root.append(source, status, review);
     context.body.append(root);
     context.view = { root, status, source, review };
     return context.view;
@@ -295,29 +295,13 @@ export class ItemPaneController {
     }
   }
 
-  private async inspect(context: PaneContext): Promise<void> {
-    if (!this.isAlive(context) || !isItemPaneShown()) return;
-    try {
-      // 空批次和损坏日志也由既有只读入口说明，不伪造历史或撤销当前项。
-      await this.actions.inspectBatchStatus(context.ownerWindow, this.actions.getToolkit());
-    } catch (error) {
-      Zotero.debug(`[zmta] 查看批次入口失败：${error}`);
-      await this.showError(context, "zmta-item-pane-inspect-error");
-    }
-  }
-
-  private async settings(context: PaneContext): Promise<void> {
-    if (!this.isAlive(context)) return;
-    try { this.actions.openPreferences(); } catch (error) {
-      Zotero.debug(`[zmta] 打开设置失败：${error}`);
-      await this.showError(context, "zmta-item-pane-settings-error");
-    }
-  }
-
   private async showError(context: PaneContext, id: string): Promise<void> {
-    let message = "Unable to open this action. Please try the item context menu or Zotero Settings.";
+    let message = localized(
+      "无法打开这个操作，请改用条目右键菜单或 Zotero 设置。",
+      "Unable to open this action. Please try the item context menu or Zotero Settings.",
+    );
     try { message = await context.props.doc.l10n.formatValue(id) || message; } catch { /* 保留可理解反馈 */ }
-    if (this.isAlive(context)) Zotero.alert(context.ownerWindow, "Zotero Metadata Update", message);
+    if (this.isAlive(context)) Zotero.alert(context.ownerWindow, localized(PLUGIN_NAME.zh, PLUGIN_NAME.en), message);
   }
 
   private destroy(context?: PaneContext): void {

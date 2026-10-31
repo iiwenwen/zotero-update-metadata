@@ -1,3 +1,4 @@
+import { localized } from "../../utils/locale";
 import {
   ChangeExecutionError,
   type CandidateAttachment,
@@ -60,7 +61,7 @@ function assertItemIdentity(item: any, ref: MetadataItemRef): void {
   ) {
     throw new ChangeExecutionError(
       "item-mismatch",
-      `条目身份已变化，拒绝写入：${ref.itemKey}`,
+      localized(`条目身份已变化，未写入：${ref.itemKey}`, `The item identity changed. Nothing was saved: ${ref.itemKey}`),
     );
   }
 }
@@ -122,7 +123,7 @@ export class DefaultZoteroMutationPort implements ZoteroMutationPort<any, any> {
     if (!url || !contentType || !title) {
       throw new ChangeExecutionError(
         "write-failed",
-        "附件缺少 url、mimeType 或 title",
+        localized("附件缺少有效的网址、文件类型或标题", "The attachment is missing a valid URL, file type, or title."),
       );
     }
     return this.trackCreation(item, (child) => {
@@ -162,11 +163,11 @@ export class DefaultZoteroMutationPort implements ZoteroMutationPort<any, any> {
     if (!item || item.id === undefined || item.id === null) {
       throw new ChangeExecutionError(
         "compensation-failed",
-        "新建子条目缺少 id，无法移入回收站",
+        localized("无法确认新增内容的编号，未移入回收站", "The new item could not be identified and was not moved to the trash."),
       );
     }
     if (!expectedFingerprint || this.getCreatedItemFingerprint(item) !== expectedFingerprint) {
-      throw new ChangeExecutionError("conflict", "新增子项已变化或缺少创建状态，保留未回收");
+      throw new ChangeExecutionError("conflict", localized("新增内容已被改动或无法确认初始状态，已保留", "The new content was kept because it changed or its initial state could not be verified."));
     }
     await this.host.trashItem(Number(item.id));
   }
@@ -288,9 +289,9 @@ export class DefaultZoteroRollbackPort {
 
   async trashItem(libraryID: number, itemKey: string, expectedFingerprint?: string): Promise<void> {
     const item = await this.getItem(libraryID, itemKey);
-    if (!item) throw new ChangeExecutionError("item-not-found", `找不到新增子条目：${itemKey}`);
+    if (!item) throw new ChangeExecutionError("item-not-found", localized(`找不到新增内容：${itemKey}`, `The new content could not be found: ${itemKey}`));
     if (!expectedFingerprint || this.getCreatedItemFingerprint(item) !== expectedFingerprint) {
-      throw new ChangeExecutionError("conflict", "新增子项已变化或缺少创建状态，保留未回收");
+      throw new ChangeExecutionError("conflict", localized("新增内容已被改动或无法确认初始状态，已保留", "The new content was kept because it changed or its initial state could not be verified."));
     }
     await Zotero.Items.trashTx(item.id);
   }

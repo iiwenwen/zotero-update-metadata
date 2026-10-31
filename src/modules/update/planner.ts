@@ -1,3 +1,4 @@
+import { localized } from "../../utils/locale";
 import type { AttachmentCandidate } from "../batchTypes";
 import type {
   BatchExcludedField,
@@ -205,7 +206,7 @@ export function candidateToBatchPreview(
       title: candidate.item.title,
       sourceURL: candidate.evidence.sourceURL,
       status: "blocked",
-      message: `条目类型不一致：本地 ${localItemType || "unknown"}，候选 ${candidate.itemType || "unknown"}`,
+      message: localized("来源条目类型与当前条目不一致。条目未更新。", "The source item type does not match the current item. Nothing was updated."),
       fields: [],
       attachments: [],
       notes: [],
@@ -225,7 +226,7 @@ export function candidateToBatchPreview(
       title: candidate.item.title,
       sourceURL: candidate.evidence.sourceURL,
       status: "blocked",
-      message: "候选 Creator 结构或角色不适用于当前条目类型",
+      message: localized("来源中的作者与贡献者信息不适用于此条目。条目未更新。", "The source authors and contributors do not apply to this item. Nothing was updated."),
       fields: [],
       attachments: [],
       notes: [],
@@ -252,7 +253,7 @@ export function candidateToBatchPreview(
         title: candidate.item.title,
         sourceURL: candidate.evidence.sourceURL,
         status: "blocked",
-        message: "无法读取并验证本地 Creator 列表",
+        message: localized("无法识别现有作者与贡献者信息。条目未更新。", "The current authors and contributors could not be read. Nothing was updated."),
         fields: [],
         attachments: [],
         notes: [],
@@ -323,8 +324,8 @@ export function candidateToBatchPreview(
     message: ready
       ? undefined
       : excludedFields.length > 0
-        ? `无可更新差异（${excludedFields.length} 个字段已排除）`
-        : "无差异",
+        ? localized(`未发现可更新内容。有 ${excludedFields.length} 个字段不适用于此条目，已排除。`, `No updates found. ${excludedFields.length} fields do not apply to this item and were excluded.`)
+        : localized("未发现可更新内容。", "No updates found."),
     fields,
     ...(creators ? { creators } : {}),
     ...(excludedFields.length > 0

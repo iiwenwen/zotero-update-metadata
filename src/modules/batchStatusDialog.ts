@@ -1,3 +1,9 @@
+import { trackPluginDialog } from "./dialogLifecycle";
+import { mountMetadataNavigation } from "./metadataNavigation";
+import { DIALOG_STYLES, markDialogWindow } from "./dialogStyles";
+import { fillCopy, type DialogCopy, type MessageId } from "./dialogCopy";
+import { creatorRoleLabel, metadataFieldLabel, metadataRouteLabel, metadataSourceLabel, metadataRecordTime } from "./metadataDisplay";
+import { localized } from "../utils/locale";
 // 批次状态 UI：只消费 journal 的不可变展示快照，不查询条目、不访问来源、不提供写入动作。
 
 import type {
@@ -22,6 +28,9 @@ export interface BatchStatusSummary {
 
 export interface BatchStatusDisplayOptions {
   readonly showTechnicalDetails?: boolean;
+  readonly error?: string;
+  readonly initialBatchId?: string;
+  readonly locatableItemKeys?: ReadonlySet<string>;
 }
 
 export const BATCH_STATUS_ELEMENT_IDS = Object.freeze({
@@ -29,194 +38,64 @@ export const BATCH_STATUS_ELEMENT_IDS = Object.freeze({
   close: "zmta-batch-status-close",
 });
 
-const BATCH_STATUS_LABELS: Record<BatchInspectionBatch["status"], string> = {
-  running: "进行中",
-  completed: "已完成",
-  partial: "部分完成",
-  failed: "失败",
-  "rolled-back": "已回滚",
-  "rollback-partial": "部分回滚",
+const BATCH_STATUS_MESSAGE_IDS: Record<BatchInspectionBatch["status"], MessageId> = {
+  running: "dlg-history-batch-running",
+  completed: "dlg-history-batch-completed",
+  partial: "dlg-history-batch-partial",
+  failed: "dlg-history-batch-failed",
+  "rolled-back": "dlg-history-batch-rolled-back",
+  "rollback-partial": "dlg-history-batch-rollback-partial",
 };
 
-const OPERATION_STATUS_LABELS: Record<BatchOperationStatus, string> = {
-  planned: "待执行",
-  applied: "已应用",
-  failed: "失败",
-  "rolled-back": "已回滚",
-  "rollback-conflict": "回滚冲突",
+const OPERATION_STATUS_MESSAGE_IDS: Record<BatchOperationStatus, MessageId> = {
+  planned: "dlg-history-op-planned",
+  applied: "dlg-history-op-applied",
+  failed: "dlg-history-op-failed",
+  "rolled-back": "dlg-history-op-rolled-back",
+  "rollback-conflict": "dlg-history-op-rollback-conflict",
 };
 
-const OPERATION_KIND_LABELS: Record<BatchInspectionOperation["kind"], string> = {
-  field: "字段",
-  creators: "作者与贡献者",
-  attachment: "附件",
-  note: "笔记",
+const OPERATION_KIND_MESSAGE_IDS: Record<BatchInspectionOperation["kind"], MessageId> = {
+  field: "dlg-history-kind-field",
+  creators: "dlg-history-kind-creators",
+  attachment: "dlg-history-kind-attachment",
+  note: "dlg-history-kind-note",
 };
 
-const PROVIDER_LABELS: Record<string, string> = {
-  douban: "豆瓣读书",
-  "douban-web": "豆瓣读书",
-  zotero: "Zotero",
-};
+export const BATCH_STATUS_COPY_IDS: readonly MessageId[] = Object.freeze([
+  "dlg-history-title", "dlg-history-none", "dlg-history-no-operations", "dlg-history-no-items",
+  "dlg-history-latest", "dlg-history-earlier", "dlg-history-technical", "dlg-history-locate",
+  "dlg-history-locate-title", "dlg-history-locate-disabled", "dlg-history-locate-failed",
+  "dlg-history-empty-headline", "dlg-history-unavailable-headline", "dlg-history-empty-subline",
+  "dlg-history-reload", "dlg-history-back", "dlg-history-nav", "dlg-history-unfinished",
+  "dlg-history-headline", "dlg-history-headline-incomplete", "dlg-history-subline",
+  "dlg-history-subline-attention", "dlg-history-batch-meta", "dlg-history-op-values", "dlg-history-source",
+  "dlg-common-unnamed-item",
+  ...Object.values(BATCH_STATUS_MESSAGE_IDS),
+  ...Object.values(OPERATION_STATUS_MESSAGE_IDS),
+  ...Object.values(OPERATION_KIND_MESSAGE_IDS),
+]);
 
-const ROUTE_LABELS: Record<string, string> = {
-  "url.web": "网页获取",
-  "doi.search": "DOI 检索",
-};
-
-const FIELD_LABELS: Record<string, string> = {
-  title: "标题",
-  shortTitle: "短标题",
-  abstractNote: "摘要",
-  date: "日期",
-  publisher: "出版社",
-  publicationTitle: "刊物名称",
-  volume: "卷",
-  issue: "期",
-  pages: "页码",
-  edition: "版次",
-  language: "语言",
-  ISBN: "ISBN",
-  ISSN: "ISSN",
-  DOI: "DOI",
-  url: "网址",
-};
-
-const CREATOR_ROLE_LABELS: Record<string, string> = {
-  author: "作者",
-  bookAuthor: "原著作者",
-  contributor: "贡献者",
-  editor: "编辑",
-  seriesEditor: "丛书编辑",
-  translator: "译者",
-  director: "导演",
-  scriptwriter: "编剧",
-  producer: "制片人",
-  performer: "表演者",
-  composer: "作曲者",
-  artist: "艺术家",
-  interviewer: "采访者",
-  interviewee: "受访者",
-  inventor: "发明人",
-};
-
-const BATCH_STATUS_CSS = `
-  #zmta-batch-status {
-    --zmta-window: #242424;
-    --zmta-panel: #2b2b2b;
-    --zmta-panel-raised: #303030;
-    --zmta-line: #4b4b4b;
-    --zmta-text: #f0f0f0;
-    --zmta-muted: #b5b5b5;
-    --zmta-accent: #4da3ff;
-    --zmta-danger: #ff8585;
-    background: var(--zmta-window) !important;
-    color: var(--zmta-text) !important;
-    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif !important;
-  }
-
-  @media (prefers-color-scheme: light) {
-    #zmta-batch-status {
-      --zmta-window: #f7f7f7;
-      --zmta-panel: #ffffff;
-      --zmta-panel-raised: #f0f0f0;
-      --zmta-line: #d0d0d0;
-      --zmta-text: #202124;
-      --zmta-muted: #62666d;
-      --zmta-accent: #0969da;
-      --zmta-danger: #b42318;
-    }
-  }
-
-  #zmta-batch-status .zmta-status-sidebar {
-    border-color: var(--zmta-line) !important;
-    background: var(--zmta-panel) !important;
-  }
-
-  #zmta-batch-status .zmta-status-tab {
-    appearance: none !important;
-    display: block !important;
-    box-sizing: border-box !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    line-height: 1.5 !important;
-    color: var(--zmta-text) !important;
-  }
-
-  #zmta-batch-status .zmta-status-tab:hover,
-  #zmta-batch-status .zmta-status-tab[aria-selected="true"] {
-    background: var(--zmta-panel-raised) !important;
-  }
-
-  #zmta-batch-status .zmta-status-tab[aria-selected="true"] {
-    border-color: var(--zmta-accent) !important;
-  }
-
-  #zmta-batch-status .zmta-status-muted,
-  #zmta-batch-status .zmta-status-source,
-  #zmta-batch-status .zmta-status-value {
-    color: var(--zmta-muted) !important;
-  }
-
-  #zmta-batch-status .zmta-status-error {
-    color: var(--zmta-danger) !important;
-    overflow-wrap: anywhere !important;
-    white-space: pre-wrap !important;
-  }
-
-  #zmta-batch-status .zmta-status-operation {
-    border-color: var(--zmta-line) !important;
-  }
-
+const BATCH_STATUS_CSS = DIALOG_STYLES + `
   #zmta-batch-status .zmta-status-title,
   #zmta-batch-status .zmta-status-value,
-  #zmta-batch-status .zmta-status-source {
-    overflow-wrap: anywhere !important;
-  }
-
-  #zmta-batch-status .zmta-technical-details {
-    margin: 5px 0 10px !important;
-    color: var(--zmta-muted) !important;
-    font-size: 12px !important;
-  }
-
-  #zmta-batch-status .zmta-technical-details summary {
-    width: max-content !important;
-    cursor: pointer !important;
-  }
-
-  #zmta-batch-status .zmta-technical-content {
-    margin-top: 5px !important;
-    padding-left: 12px !important;
-    overflow-wrap: anywhere !important;
-    user-select: text !important;
-  }
-
-  #zmta-batch-status-close {
-    min-width: 88px !important;
-    min-height: 32px !important;
-  }
-
-  @media (max-width: 700px) {
-    #zmta-batch-status .zmta-status-workspace {
-      grid-template-columns: minmax(0, 1fr) !important;
-      grid-template-rows: minmax(88px, 28vh) minmax(0, 1fr) !important;
-    }
-
-    #zmta-batch-status .zmta-status-sidebar {
-      border-right: 0 !important;
-      border-bottom: 1px solid var(--zmta-line) !important;
-    }
+  #zmta-batch-status .zmta-status-source,
+  #zmta-batch-status .zmta-status-error { overflow-wrap: anywhere; }
+  #zmta-batch-status .zmta-technical-details { margin: 5px 0 10px; }
+  #zmta-batch-status .zmta-technical-content { white-space: pre-wrap; user-select: text; }
+  @media (max-width: 760px) {
+    #zmta-batch-status .zmta-status-workspace { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto minmax(0, 1fr); }
+    #zmta-batch-status .zmta-status-workspace[data-single="true"] { grid-template-rows: minmax(0, 1fr); }
+    #zmta-batch-status .zmta-status-sidebar { border-right: 0 !important; border-bottom: 1px solid ButtonBorder; }
   }
 `;
 
-export function getBatchStatusLabel(status: BatchInspectionBatch["status"]): string {
-  return BATCH_STATUS_LABELS[status];
+export function getBatchStatusLabel(status: BatchInspectionBatch["status"], copy: DialogCopy): string {
+  return copy.text(BATCH_STATUS_MESSAGE_IDS[status]);
 }
 
-export function getBatchOperationStatusLabel(status: BatchOperationStatus): string {
-  return OPERATION_STATUS_LABELS[status];
+export function getBatchOperationStatusLabel(status: BatchOperationStatus, copy: DialogCopy): string {
+  return copy.text(OPERATION_STATUS_MESSAGE_IDS[status]);
 }
 
 export function summarizeBatchStatus(batches: readonly BatchInspectionBatch[]): BatchStatusSummary {
@@ -249,8 +128,8 @@ export function summarizeBatchStatus(batches: readonly BatchInspectionBatch[]): 
 }
 
 function displayValue(value: unknown): string {
-  if (value === undefined) return "未知";
-  if (value === null || value === "") return "（空）";
+  if (value === undefined) return localized("未知", "Unknown");
+  if (value === null || value === "") return localized("（空）", "(empty)");
   if (typeof value === "string") return value;
   try {
     const serialized = JSON.stringify(value);
@@ -262,68 +141,73 @@ function displayValue(value: unknown): string {
 
 function displayOperationValue(operation: BatchInspectionOperation, value: unknown): string {
   if (operation.kind !== "creators" || !Array.isArray(value)) return displayValue(value);
-  if (value.length === 0) return "（空列表）";
+  if (value.length === 0) return localized("（空列表）", "(empty list)");
   return value.map((creator: any, index) => {
     const name = typeof creator?.name === "string"
       ? creator.name
       : [creator?.firstName, creator?.lastName].filter(Boolean).join(" ");
     const creatorType = creator?.creatorType || "未知角色";
-    return `${index + 1}. ${name || "（空名称）"} · ${CREATOR_ROLE_LABELS[creatorType] || creatorType}`;
+    return `${index + 1}. ${name || localized("（空名称）", "(no name)")} · ${creatorRoleLabel(creatorType)}`;
   }).join("\n");
 }
 
+/** 只给出来源名；"来源："前缀在界面文案里，由 FTL 统一。 */
 export function formatBatchInspectionSource(source?: BatchInspectionSource): string {
-  if (!source) return "来源：未知";
-  const provider = PROVIDER_LABELS[source.providerId] || source.providerId || "未知";
-  return `来源：${provider}`;
+  return (source && metadataSourceLabel(source.providerId)) || localized("未知", "Unknown");
 }
 
-function formatBatchTechnicalSource(source?: BatchInspectionSource): string {
-  if (!source) return "来源信息不可用";
-  const route = source.routeId ? (ROUTE_LABELS[source.routeId] || source.routeId) : "未知方式";
+/** 技术详情是排障区：标签走命令式双语，内部诊断原文不做翻译。 */
+function technicalSourceLines(source: BatchInspectionSource | undefined): string[] {
+  const routeLabel = localized("获取方式：", "Retrieved by: ");
+  const identifierLabel = localized("标识符：", "Identifiers: ");
+  if (!source) return [localized("来源信息不可用", "Source information unavailable")];
+  const route = source.routeId
+    ? (metadataRouteLabel(source.routeId) ?? source.routeId)
+    : localized("未知方式", "Unknown route");
   const identifiers = source.identifiers.length
     ? source.identifiers.map((identifier) => `${identifier.type}: ${identifier.value}`).join(" · ")
-    : "无标识符";
-  return `获取方式：${route}\n标识符：${identifiers}`;
+    : localized("无标识符", "No identifiers");
+  return [`${routeLabel}${route}`, `${identifierLabel}${identifiers}`];
 }
 
-function operationCounts(batch: BatchInspectionBatch): string {
-  const operations = batch.items.reduce((count, item) => count + item.operations.length, 0);
-  return `${batch.items.length} 个条目 · ${operations} 项操作`;
+function operationLabel(operation: BatchInspectionOperation, copy: DialogCopy): string {
+  if (operation.kind === "field") return metadataFieldLabel(operation.label);
+  if (operation.kind === "creators") return copy.text("dlg-history-kind-creators");
+  return operation.label && operation.label !== "Note" ? operation.label : copy.text(OPERATION_KIND_MESSAGE_IDS[operation.kind]);
 }
 
-function operationLabel(operation: BatchInspectionOperation): string {
-  if (operation.kind === "field") return FIELD_LABELS[operation.label] || operation.label;
-  if (operation.kind === "creators") return "作者与贡献者";
-  return operation.label && operation.label !== "Note" ? operation.label : OPERATION_KIND_LABELS[operation.kind];
-}
-
-function buildTechnicalDetails(lines: string[]): any {
+function buildTechnicalDetails(lines: string[], copy: DialogCopy): any {
   return {
     tag: "details",
     namespace: "html",
     classList: ["zmta-technical-details"],
     children: [
-      { tag: "summary", namespace: "html", properties: { textContent: "技术详情" } },
+      { tag: "summary", namespace: "html", properties: { textContent: copy.text("dlg-history-technical") } },
       { tag: "div", namespace: "html", classList: ["zmta-technical-content"], properties: { textContent: lines.join("\n") }, styles: { whiteSpace: "pre-wrap" } },
     ],
   };
 }
 
-function selectBatch(event: Event, selectedIndex: number, batchCount: number): void {
-  const doc = (event.currentTarget as HTMLElement | null)?.ownerDocument;
+function selectBatch(doc: Document, selectedIndex: number, batchCount: number): void {
   if (!doc) return;
   for (let index = 0; index < batchCount; index += 1) {
-    const tab = doc.getElementById(`zmta-batch-status-tab-${index}`) as HTMLElement | null;
     const detail = doc.getElementById(`zmta-batch-status-detail-${index}`) as HTMLElement | null;
-    if (tab) tab.setAttribute("aria-selected", String(index === selectedIndex));
     if (detail) detail.style.display = index === selectedIndex ? "block" : "none";
   }
+  const pane = doc.getElementById("zmta-status-detail-pane");
+  if (pane) pane.scrollTop = 0;
 }
 
-function buildOperation(operation: BatchInspectionOperation): any {
+function buildOperation(operation: BatchInspectionOperation, operationIndex: number, copy: DialogCopy, fills: any[]): any {
   const hasValues = operation.kind === "field" || operation.before !== undefined || operation.after !== undefined;
   const isError = operation.status === "failed" || operation.status === "rollback-conflict";
+  const valueID = `zmta-status-op-value-${operationIndex}`;
+  if (hasValues) {
+    fills.push({ elementID: valueID, id: "dlg-history-op-values", args: {
+      before: displayOperationValue(operation, operation.before),
+      after: displayOperationValue(operation, operation.after),
+    } });
+  }
   return {
     tag: "div",
     namespace: "html",
@@ -336,44 +220,64 @@ function buildOperation(operation: BatchInspectionOperation): any {
         namespace: "html",
         styles: { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "baseline" },
         children: [
-          { tag: "strong", namespace: "html", properties: { textContent: operationLabel(operation) }, styles: { minWidth: "0", overflowWrap: "anywhere" } },
-          { tag: "span", namespace: "html", properties: { textContent: getBatchOperationStatusLabel(operation.status) }, styles: { flex: "none", whiteSpace: "nowrap" } },
+          { tag: "strong", namespace: "html", properties: { textContent: operationLabel(operation, copy) }, styles: { minWidth: "0", overflowWrap: "anywhere" } },
+          { tag: "span", namespace: "html", properties: { textContent: getBatchOperationStatusLabel(operation.status, copy) }, styles: { flex: "none", whiteSpace: "nowrap" } },
         ],
       },
       ...(hasValues ? [{
         tag: "div",
         namespace: "html",
+        id: valueID,
         classList: ["zmta-status-value"],
-        properties: { textContent: `${displayOperationValue(operation, operation.before)} → ${displayOperationValue(operation, operation.after)}` },
-        styles: { marginTop: "4px", color: "GrayText", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+        properties: { textContent: "" },
+        styles: { marginTop: "4px", color: "var(--zmta-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
       }] : []),
       ...(operation.message ? [{
         tag: "div",
         namespace: "html",
         classList: [isError ? "zmta-status-error" : "zmta-status-muted"],
         properties: { textContent: operation.message },
-        styles: { marginTop: "4px", color: isError ? "Mark" : "GrayText", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+        styles: { marginTop: "4px", color: isError ? "Mark" : "var(--zmta-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
       }] : []),
     ],
   };
 }
 
-function buildItem(item: BatchInspectionBatch["items"][number], showTechnicalDetails: boolean): any {
+function buildItem(
+  item: BatchInspectionBatch["items"][number],
+  itemIndex: number,
+  copy: DialogCopy,
+  fills: any[],
+  showTechnicalDetails: boolean,
+  locate?: (item: BatchInspectionBatch["items"][number]) => void,
+  locatable?: ReadonlySet<string>,
+): any {
+  const sourceID = `zmta-status-source-${itemIndex}`;
+  fills.push({ elementID: sourceID, id: "dlg-history-source", args: { source: formatBatchInspectionSource(item.source) } });
   return {
-    tag: "section",
+    tag: "details",
     namespace: "html",
+    properties: { open: true },
     classList: ["zmta-status-item"],
     attributes: { "data-item-key": item.itemKey },
     styles: { marginBottom: "18px" },
     children: [
-      { tag: "h3", namespace: "html", classList: ["zmta-status-title"], properties: { textContent: item.title || item.itemKey || "未命名条目" }, styles: { margin: "0 0 3px", fontSize: "15px", overflowWrap: "anywhere" } },
-      { tag: "div", namespace: "html", classList: ["zmta-status-source"], properties: { textContent: formatBatchInspectionSource(item.source) }, styles: { margin: "5px 0 8px", color: "GrayText", fontSize: "12px", overflowWrap: "anywhere" } },
+      { tag: "summary", namespace: "html", classList: ["zmta-status-title"], properties: { textContent: item.title || copy.text("dlg-common-unnamed-item") }, styles: { margin: "0 0 3px", fontSize: "15px", overflowWrap: "anywhere" } },
+      { tag: "div", namespace: "html", id: sourceID, classList: ["zmta-status-source"], properties: { textContent: "" }, styles: { margin: "5px 0 8px", color: "var(--zmta-muted)", fontSize: "12px", overflowWrap: "anywhere" } },
+      ...(locate ? [{ tag: "button", namespace: "html", attributes: { type: "button" },
+        properties: {
+          textContent: copy.text("dlg-history-locate"),
+          disabled: !locatable?.has(item.itemKey),
+          title: locatable?.has(item.itemKey) ? copy.text("dlg-history-locate-title") : copy.text("dlg-history-locate-disabled"),
+        },
+        listeners: [{ type: "click", listener: () => locate(item) }] }] : []),
       ...(showTechnicalDetails
-        ? [buildTechnicalDetails([`条目编号：${item.itemKey}`, formatBatchTechnicalSource(item.source)])]
+        ? [buildTechnicalDetails([`${localized("条目编号：", "Item ID: ")}${item.itemKey}`, ...technicalSourceLines(item.source)], copy)]
         : []),
       ...(item.operations.length
-        ? [{ tag: "div", namespace: "html", classList: ["zmta-status-operations"], styles: { border: "1px solid ButtonBorder", borderRadius: "7px", overflow: "hidden" }, children: item.operations.map(buildOperation) }]
-        : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: "没有操作记录" }, styles: { color: "GrayText", fontSize: "12px" } }]),
+        ? [{ tag: "div", namespace: "html", classList: ["zmta-status-operations"], styles: { border: "1px solid ButtonBorder", borderRadius: "7px", overflow: "hidden" },
+          children: item.operations.map((operation, index) => buildOperation(operation, `${itemIndex}-${index}`, copy, fills)) }]
+        : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: copy.text("dlg-history-no-operations") }, styles: { color: "var(--zmta-muted)", fontSize: "12px" } }]),
     ],
   };
 }
@@ -381,44 +285,71 @@ function buildItem(item: BatchInspectionBatch["items"][number], showTechnicalDet
 // 返回 DialogHelper 可直接消费的声明式布局；事件只切换当前文档中的可见详情。
 export function buildBatchStatusDialogLayout(
   batches: readonly BatchInspectionBatch[],
+  copy: DialogCopy,
   options: BatchStatusDisplayOptions = {},
-): any {
+  actions: { locate?: (item: BatchInspectionBatch["items"][number]) => void } = {},
+): { layout: any; fills: any[] } {
   const showTechnicalDetails = options.showTechnicalDetails === true;
   const summary = summarizeBatchStatus(batches);
+  const initialIndex = Math.max(0, batches.findIndex(batch => batch.batchId === options.initialBatchId));
   const totalOperations = summary.fields + summary.creators + summary.attachments + summary.notes;
-  const tabs = batches.map((batch, index) => ({
-    tag: "button",
-    namespace: "html",
-    classList: ["zmta-status-tab"],
-    id: `zmta-batch-status-tab-${index}`,
-    attributes: { type: "button", "aria-selected": String(index === 0) },
-    listeners: [{ type: "click", listener: (event: Event) => selectBatch(event, index, batches.length) }],
-    styles: { width: "100%", marginBottom: "4px", padding: "9px 10px", border: index === 0 ? "1px solid Highlight" : "1px solid transparent", borderRadius: "7px", backgroundColor: "transparent", color: "CanvasText", textAlign: "left", cursor: "pointer" },
-    children: [
-      { tag: "strong", namespace: "html", properties: { textContent: index === 0 ? "最近一次更新" : `较早记录 ${index + 1}` }, styles: { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
-      { tag: "span", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: `${getBatchStatusLabel(batch.status)} · ${batch.items.length} 个条目` }, styles: { display: "block", marginTop: "3px", color: "GrayText", fontSize: "11px" } },
-    ],
-  }));
-  const details = batches.map((batch, index) => ({
-    tag: "article",
-    namespace: "html",
-    id: `zmta-batch-status-detail-${index}`,
-    attributes: { "data-batch-id": batch.batchId },
-    styles: { display: index === 0 ? "block" : "none", padding: "20px 24px 32px", minWidth: "0" },
-    children: [
-      { tag: "h2", namespace: "html", classList: ["zmta-status-title"], properties: { textContent: index === 0 ? "最近一次更新" : `较早记录 ${index + 1}` }, styles: { margin: "0 0 5px", fontSize: "18px", overflowWrap: "anywhere" } },
-      { tag: "div", namespace: "html", properties: { textContent: `${getBatchStatusLabel(batch.status)}${batch.incomplete ? " · 未完成" : ""}` }, styles: { marginBottom: "3px", fontWeight: "600" } },
-      { tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: operationCounts(batch) }, styles: { margin: "3px 0 18px", color: "GrayText", fontSize: "12px" } },
-      ...(showTechnicalDetails
-        ? [buildTechnicalDetails([`批次编号：${batch.batchId}`, `创建时间：${batch.createdAt}`, `完成时间：${batch.completedAt || "未完成"}`])]
-        : []),
-      ...(batch.items.length
-        ? batch.items.map((item) => buildItem(item, showTechnicalDetails))
-        : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: "这个批次没有条目记录" }, styles: { color: "GrayText" } }]),
-    ],
-  }));
+  const fills: any[] = [];
+  const headlineID = "zmta-records-headline";
+  const sublineID = "zmta-records-subline";
+  if (batches.length) {
+    fills.push({
+      elementID: headlineID,
+      id: summary.incomplete ? "dlg-history-headline-incomplete" : "dlg-history-headline",
+      args: { batches: summary.batches, incomplete: summary.incomplete },
+    });
+    fills.push({
+      elementID: sublineID,
+      id: summary.failed + summary.rollbackConflicts ? "dlg-history-subline-attention" : "dlg-history-subline",
+      args: { items: summary.items, ops: totalOperations, attention: summary.failed + summary.rollbackConflicts },
+    });
+  }
+  const details = batches.map((batch, index) => {
+    const state = `${getBatchStatusLabel(batch.status, copy)}${batch.incomplete ? ` · ${copy.text("dlg-history-unfinished")}` : ""}`;
+    const titleID = `zmta-status-batch-title-${index}`;
+    if (index > 0) fills.push({ elementID: titleID, id: "dlg-history-earlier", args: { index: index + 1 } });
+    const metaID = `zmta-status-batch-meta-${index}`;
+    fills.push({
+      elementID: metaID,
+      id: "dlg-history-batch-meta",
+      args: {
+        start: metadataRecordTime(batch.createdAt),
+        end: metadataRecordTime(batch.completedAt),
+        items: batch.items.length,
+        ops: batch.items.reduce((count, item) => count + item.operations.length, 0),
+      },
+    });
+    return {
+      tag: "article",
+      namespace: "html",
+      id: `zmta-batch-status-detail-${index}`,
+      attributes: { "data-batch-id": batch.batchId },
+      styles: { display: index === initialIndex ? "block" : "none", padding: "20px 24px 32px", minWidth: "0" },
+      children: [
+        { tag: "h2", namespace: "html", id: titleID, classList: ["zmta-status-title"],
+          properties: { textContent: index === 0 ? copy.text("dlg-history-latest") : "" },
+          styles: { margin: "0 0 5px", fontSize: "18px", overflowWrap: "anywhere" } },
+        { tag: "div", namespace: "html", properties: { textContent: state }, styles: { marginBottom: "3px", fontWeight: "600" } },
+        { tag: "div", namespace: "html", id: metaID, classList: ["zmta-status-muted"], properties: { textContent: "" }, styles: { margin: "3px 0 18px", color: "var(--zmta-muted)", fontSize: "12px" } },
+        ...(showTechnicalDetails
+          ? [buildTechnicalDetails([
+            `${localized("更新编号：", "Update ID: ")}${batch.batchId}`,
+            `${localized("创建时间：", "Created: ")}${batch.createdAt}`,
+            `${localized("完成时间：", "Finished: ")}${batch.completedAt || copy.text("dlg-history-unfinished")}`,
+          ], copy)]
+          : []),
+        ...(batch.items.length
+          ? batch.items.map((item, itemIndex) => buildItem(item, `${index}-${itemIndex}`, copy, fills, showTechnicalDetails, actions.locate, options.locatableItemKeys))
+          : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: copy.text("dlg-history-no-items") }, styles: { color: "var(--zmta-muted)" } }]),
+      ],
+    };
+  });
 
-  return {
+  const layout = {
     tag: "div",
     namespace: "html",
     id: BATCH_STATUS_ELEMENT_IDS.root,
@@ -429,23 +360,32 @@ export function buildBatchStatusDialogLayout(
         namespace: "html",
         styles: { padding: "12px 18px", borderBottom: "1px solid ButtonBorder" },
         children: [
-          { tag: "strong", namespace: "html", properties: { textContent: batches.length ? `${summary.batches} 个批次 · ${summary.incomplete} 个未完成` : "没有可查看的批次" }, styles: { display: "block", fontSize: "16px" } },
-          { tag: "span", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: batches.length ? `${summary.items} 个条目 · ${totalOperations} 项操作${summary.failed + summary.rollbackConflicts ? ` · ${summary.failed + summary.rollbackConflicts} 项需处理` : ""}` : "没有更新记录" }, styles: { color: "GrayText", fontSize: "12px" } },
+          { tag: "p", namespace: "html", id: "zmta-records-message", attributes: { role: options.error ? "alert" : "status" }, properties: { textContent: options.error || "" } },
+          { tag: "strong", namespace: "html", id: headlineID, properties: { textContent: "" }, styles: { display: "block", fontSize: "16px" } },
+          { tag: "span", namespace: "html", id: sublineID, classList: ["zmta-status-muted"], properties: { textContent: "" }, styles: { color: "var(--zmta-muted)", fontSize: "12px" } },
         ],
       },
       {
         tag: "div",
         namespace: "html",
         classList: ["zmta-status-workspace"],
-        styles: { display: "grid", gridTemplateColumns: "clamp(220px, 25vw, 280px) minmax(0, 1fr)", width: "100%", minWidth: "0", minHeight: "0", boxSizing: "border-box" },
+        attributes: { "data-single": String(batches.length < 2) },
+        styles: { display: "grid", gridTemplateColumns: batches.length < 2 ? "minmax(0, 1fr)" : "clamp(220px, 25vw, 280px) minmax(0, 1fr)", width: "100%", minWidth: "0", minHeight: "0", boxSizing: "border-box" },
         children: [
-          { tag: "nav", namespace: "html", classList: ["zmta-status-sidebar"], styles: { overflow: "auto", minWidth: "0", padding: "9px", borderRight: "1px solid ButtonBorder" }, children: tabs.length ? tabs : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: "无批次" }, styles: { padding: "10px", color: "GrayText" } }] },
-          { tag: "main", namespace: "html", classList: ["zmta-status-detail-pane"], styles: { overflow: "auto", minWidth: "0" }, children: details.length ? details : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: "没有批次详情" }, styles: { padding: "20px 24px", color: "GrayText" } }] },
+          { tag: "nav", namespace: "html", id: "zmta-history-navigation", classList: ["zmta-status-sidebar"], attributes: { "aria-label": copy.text("dlg-history-nav") }, styles: { overflow: "auto", minWidth: "0", padding: "9px", borderRight: "1px solid ButtonBorder", display: batches.length < 2 ? "none" : "block" } },
+          { tag: "main", namespace: "html", id: "zmta-status-detail-pane", classList: ["zmta-status-detail-pane"], styles: { overflow: "auto", minWidth: "0" }, children: details.length ? details : [{ tag: "div", namespace: "html", classList: ["zmta-status-muted"], properties: { textContent: copy.text("dlg-history-none") }, styles: { padding: "20px 24px", color: "var(--zmta-muted)" } }] },
         ],
       },
       { tag: "style", namespace: "html", properties: { textContent: BATCH_STATUS_CSS } },
     ],
   };
+  // 空记录/读取失败时的头部文字是静态文案，直接用 text 填。
+  if (!batches.length) {
+    const headline = layout.children[0].children[1];
+    headline.properties.textContent = copy.text(options.error ? "dlg-history-unavailable-headline" : "dlg-history-empty-headline");
+    layout.children[0].children[2].properties.textContent = copy.text("dlg-history-empty-subline");
+  }
+  return { layout, fills };
 }
 
 export function getBatchStatusDialogOptions() {
@@ -456,38 +396,78 @@ export function getBatchStatusDialogOptions() {
 export interface BatchStatusDialogObserver {
   /** 只供宿主机制测试观察真实 DialogHelper；生产调用不传。 */
   onOpen?(dialog: any): void;
+  onReloadRequest?(): void;
+  onLocate?(item: BatchInspectionBatch["items"][number]): Promise<void>;
 }
 
 export function showBatchStatusDialog(
   batches: readonly BatchInspectionBatch[],
   ztoolkit: any,
+  copy: DialogCopy,
   observer: BatchStatusDialogObserver = {},
   displayOptions?: BatchStatusDisplayOptions,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let dialog: any;
+    let fills: any[] = [];
     try {
       dialog = new ztoolkit.Dialog(1, 1);
-      const layout = buildBatchStatusDialogLayout(batches, {
+      const built = buildBatchStatusDialogLayout(batches, copy, {
         showTechnicalDetails: displayOptions?.showTechnicalDetails
           ?? getPref("showTechnicalDetails") === true,
-      });
-      layout.styles.gridColumn = "1 / -1";
-      dialog.addCell(0, 0, layout, true);
+        ...displayOptions,
+      }, { locate: observer.onLocate ? item => {
+        if (!owned?.active()) return;
+        void observer.onLocate!(item).catch(error => {
+          if (!owned?.active()) return;
+          const message = dialog.window?.document?.getElementById("zmta-records-message");
+          if (message) message.textContent = error instanceof Error ? error.message : copy.text("dlg-history-locate-failed");
+        });
+      } : undefined });
+      fills = built.fills;
+      built.layout.styles.gridColumn = "1 / -1";
+      dialog.addCell(0, 0, built.layout, true);
     } catch (error) {
       reject(error);
       return;
     }
 
     let closed = false;
+    let owned: ReturnType<typeof trackPluginDialog>;
+    let disposeNavigation = () => {};
     const finish = () => {
       if (closed) return;
       closed = true;
+      owned?.release();
+      try { disposeNavigation(); } catch (error) { Zotero.debug(`[zmta-ui] history navigation cleanup: ${error}`); }
       resolve();
     };
-    dialog.addButton("关闭", BATCH_STATUS_ELEMENT_IDS.close, { callback: finish });
-    dialog.setDialogData({ beforeUnloadCallback: finish });
-    dialog.open("批次状态", getBatchStatusDialogOptions());
+    owned = trackPluginDialog(dialog, "zmta-batch-status", finish);
+    if (!owned.active()) { owned.cancel(); return; }
+    if (observer.onReloadRequest) dialog.addButton(copy.text("dlg-history-reload"), "zmta-batch-status-reload", { callback: () => { if (closed || !owned.active()) return; observer.onReloadRequest!(); finish(); } });
+    dialog.addButton(copy.text("dlg-history-back"), BATCH_STATUS_ELEMENT_IDS.close, { callback: finish });
+    dialog.setDialogData({
+      loadCallback: () => { if (!owned.attach()) return; markDialogWindow(dialog);
+        fillCopy(dialog.window?.document, copy, fills);
+        const initialIndex = Math.max(0, batches.findIndex(b => b.batchId === displayOptions?.initialBatchId));
+        disposeNavigation = mountMetadataNavigation(dialog.window, "zmta-history-navigation", batches.map(b => ({
+          key: b.batchId,
+          label: `${metadataRecordTime(b.completedAt || b.createdAt)} · ${getBatchStatusLabel(b.status, copy)} · ${localized(`${b.items.length} 个条目`, `${b.items.length} items`)}`,
+        })), batches[initialIndex]?.batchId || "", key => {
+          const index = batches.findIndex(b => b.batchId === key);
+          if (index >= 0) selectBatch(dialog.window.document, index, batches.length);
+        });
+        dialog.window?.addEventListener?.("keydown", (event: any) => { if (event.key === "Escape") { event.preventDefault(); finish(); dialog.window?.close?.(); } }); },
+      beforeUnloadCallback: finish,
+    });
+    try {
+      dialog.open(copy.text("dlg-history-title"), getBatchStatusDialogOptions());
+      owned.attach();
+    } catch (error) {
+      // 同预检窗：open 抛错时结算，避免残留占位条目影响聚焦恢复。
+      owned.cancel();
+      throw error;
+    }
     observer.onOpen?.(dialog);
   });
 }

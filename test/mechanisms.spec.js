@@ -57,21 +57,19 @@ describe("显示机制", function () {
     it("MenuManager.registerMenu 可用（Zotero 10 机制）", function () {
       assert.isFunction(Zotero.MenuManager?.registerMenu, "MenuManager.registerMenu 应存在");
     });
-    it("菜单用一个父菜单承载五个正式动作，且全部通过 l10nID 本地化", function () {
+    it("菜单用一个父菜单承载两个条目动作，且全部通过 l10nID 本地化", function () {
       const menus = addon.api.buildBatchMenuEntries(Zotero.getMainWindow());
       expect(menus).to.have.lengthOf(1);
 
       const parentMenu = menus[0];
       expect(parentMenu.menuType).to.equal("submenu");
+      expect(parentMenu.icon).to.equal(addon.data.rootURI + "content/icons/favicon-16.svg");
       expect(parentMenu.l10nID).to.equal("zmta-douban-metadata-menu-label");
       expect(parentMenu.onShowing).to.be.a("function");
-      expect(parentMenu.menus).to.have.lengthOf(5);
+      expect(parentMenu.menus).to.have.lengthOf(2);
       expect(parentMenu.menus.map((menu) => menu.l10nID)).to.deep.equal([
         "zmta-review-update-menu-label",
         "zmta-use-doi-menu-label",
-        "zmta-inspect-batches-menu-label",
-        "zmta-retry-failed-menu-label",
-        "zmta-undo-batch-menu-label",
       ]);
       expect(parentMenu.menus.every((menu) => (
         menu.menuType === "menuitem"
@@ -92,13 +90,31 @@ describe("显示机制", function () {
     });
 
     it("审核动作只对 1–50 个普通书目条目启用", function () {
-      const regular = { isRegularItem: () => true };
+      const regular = { isRegularItem: () => true, getField: (field) => field === "url" ? "https://example.org/item" : "" };
       const note = { isRegularItem: () => false };
       expect(addon.api.canReviewBatchItems([])).to.equal(false);
       expect(addon.api.canReviewBatchItems([regular])).to.equal(true);
+      expect(addon.api.canReviewBatchItems([{ ...regular, getField: () => "" }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([{ ...regular, getField: () => "not-a-url" }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([{ ...regular, isEditable: () => false }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([{ ...regular, deleted: true }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([{ ...regular, isFeedItem: true }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([{ ...regular, isEditable: () => false }, { ...regular, isEditable: () => false }])).to.equal(false);
+      expect(addon.api.canReviewBatchItems([regular], { ZoteroPane: { canEdit: () => false } })).to.equal(false);
+      expect(addon.api.canReviewBatchItems([regular, { ...regular, getField: () => "" }])).to.equal(true);
       expect(addon.api.canReviewBatchItems(Array.from({ length: 50 }, () => regular))).to.equal(true);
       expect(addon.api.canReviewBatchItems(Array.from({ length: 51 }, () => regular))).to.equal(false);
       expect(addon.api.canReviewBatchItems([regular, note])).to.equal(false);
+    });
+
+    it("全局注册的菜单根据事件所属窗口判断，不使用已关闭窗口的选择", function () {
+      const valid = { isRegularItem: () => true, getField: (field) => field === "url" ? "https://example.test/" : "" };
+      const first = { ZoteroPane: { getSelectedItems: () => [], canEdit: () => true } };
+      const second = { ZoteroPane: { getSelectedItems: () => [valid], canEdit: () => true } };
+      const [parent] = addon.api.buildBatchMenuEntries(first);
+      let enabled = false;
+      parent.menus[0].onShowing(null, { menuElem: { ownerGlobal: second }, setEnabled: (value) => { enabled = value; } });
+      expect(enabled).to.equal(true);
     });
 
     it("多选上下文优先，缺失时回退到 ZoteroPane 当前选择", function () {
@@ -124,20 +140,17 @@ describe("显示机制", function () {
         await addon.api.refreshBatchRuntimeCapabilities();
         const [parent] = addon.api.buildBatchMenuEntries({ ZoteroPane: { getSelectedItems: () => [] } });
         let parentEnabled;
-        let inspectEnabled;
         let retryEnabled;
         parent.onShowing(null, { setEnabled: (value) => { parentEnabled = value; } });
-        parent.menus[2].onShowing(null, { setEnabled: (value) => { inspectEnabled = value; } });
-        parent.menus[3].onShowing(null, { setEnabled: (value) => { retryEnabled = value; } });
+        addon.api.buildToolsMenuEntries({})[0].menus[1].onShowing(null, { setEnabled: (value) => { retryEnabled = value; } });
         expect(parentEnabled).to.equal(false);
-        expect(inspectEnabled).to.equal(false);
         expect(retryEnabled).to.equal(false);
       } finally {
         addon.api.resetBatchRuntimeForTests();
       }
     });
 
-    it("存在可查看批次时，空选择也只启用父菜单与查看动作", async function () {
+    it("批次状态由工具菜单访问，不依赖条目选择", async function () {
       addon.api.resetBatchRuntimeForTests({
         storage: new addon.api.MemoryBatchJournalStorage(JSON.stringify([{
           batchId: "inspect-menu",
@@ -154,7 +167,10 @@ describe("显示机制", function () {
         parent.menus.forEach((menu, index) => {
           menu.onShowing(null, { setEnabled: (value) => { enabled[index + 1] = value; } });
         });
-        expect(enabled).to.deep.equal([true, false, false, true, false, false]);
+        expect(enabled).to.deep.equal([false, false, false]);
+        const inspect = addon.api.buildToolsMenuEntries({})[0].menus[0];
+        expect(inspect.l10nID).to.equal("zmta-inspect-batches-menu-label");
+        expect(inspect.onCommand).to.be.a("function");
       } finally {
         addon.api.resetBatchRuntimeForTests();
       }
@@ -180,24 +196,14 @@ describe("显示机制", function () {
       try {
         await addon.api.refreshBatchRuntimeCapabilities();
         const popupEvent = new mainWin.Event("popupshowing", { bubbles: false });
-        Zotero.MenuManager.updateMenuPopup(popup, "main/library/item", {
+        Zotero.MenuManager.updateMenuPopup(popup, "main/menubar/tools", {
           event: popupEvent,
           getContext: () => ({ items: [], tabType: "library", tabID: "zotero-pane" }),
         });
         await Zotero.Promise.delay(0);
 
-        const parent = popup.querySelector('[data-l10n-id="zmta-douban-metadata-menu-label"]');
-        const menuSnapshot = [...popup.querySelectorAll("*")].map((element) => ({
-          tag: element.localName,
-          attributes: [...element.attributes].map((attribute) => [attribute.name, attribute.value]),
-        }));
-        if (!parent) throw new Error(`real-menu-snapshot:${JSON.stringify(menuSnapshot)}`);
-        const subPopup = parent.querySelector("menupopup");
-        subPopup.dispatchEvent(new mainWin.Event("popupshowing", { bubbles: false }));
-        await Zotero.Promise.delay(0);
         const inspect = popup.querySelector('[data-l10n-id="zmta-inspect-batches-menu-label"]');
-        if (!inspect) throw new Error(`real-submenu-snapshot:${JSON.stringify(menuSnapshot)}`);
-        expect(parent.disabled).to.equal(false);
+        expect(inspect).not.to.equal(null);
         expect(inspect.disabled).to.equal(false);
 
         inspect.dispatchEvent(new mainWin.Event("command", { bubbles: true }));
@@ -227,35 +233,9 @@ describe("显示机制", function () {
       }
     });
 
-    it("多个主窗口分别注册和定向注销菜单", async function () {
-      const menuManager = Zotero.MenuManager;
-      const originalRegister = menuManager.registerMenu;
-      const originalUnregister = menuManager.unregisterMenu;
-      const registered = [];
-      const unregistered = [];
-      menuManager.registerMenu = () => {
-        const key = `test-menu-${registered.length + 1}`;
-        registered.push(key);
-        return key;
-      };
-      menuManager.unregisterMenu = (key) => { unregistered.push(key); };
-      const firstWindow = { MozXULElement: { insertFTLIfNeeded: () => {} } };
-      const secondWindow = { MozXULElement: { insertFTLIfNeeded: () => {} } };
-      try {
-        await addon.hooks.onMainWindowLoad(firstWindow);
-        await addon.hooks.onMainWindowLoad(secondWindow);
-        expect(registered).to.deep.equal(["test-menu-1", "test-menu-2"]);
-        expect(unregistered).to.deep.equal([]);
-        await addon.hooks.onMainWindowUnload(firstWindow);
-        expect(unregistered).to.deep.equal(["test-menu-1"]);
-      } finally {
-        await addon.hooks.onMainWindowUnload(firstWindow);
-        await addon.hooks.onMainWindowUnload(secondWindow);
-        menuManager.registerMenu = originalRegister;
-        menuManager.unregisterMenu = originalUnregister;
-      }
-      expect(unregistered).to.deep.equal(["test-menu-1", "test-menu-2"]);
-    });
+    // 全局注册/多窗口卸载的fake生命周期由itemPane.spec.js离线覆盖；
+    // 不在真实宿主中重复替换MenuManager并shutdown正在运行的插件。
+
   });
 
   describe("UI 版本号（分辨 serve 加载版本）", function () {

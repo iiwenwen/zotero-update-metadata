@@ -53,7 +53,10 @@ describe("HTTP 请求保护（fake host/route，零网络零写库）", function
     const next = await resolver.resolveDOI({ item, doi: "10.1000/b" });
     expect(calls).to.deep.equal(["search"]);
     expect(first.attempts).to.have.length(1);
+    expect(first.message).to.include("DOI 查找被拒绝");
     expect(next.attempts[0].errorCode).to.equal("host-request-stopped");
+    expect(next.message).to.include("未发起 DOI 请求");
+    expect(next.message).to.include("已停止 DOI 查找");
   });
   it("一个Web站点被拒绝不妨碍独立DOI获取路线", async function () {
     const { resolver, calls } = setup(403);
@@ -104,7 +107,7 @@ describe("HTTP 请求保护（fake host/route，零网络零写库）", function
       const { resolver, calls } = setup(429, diagnostic);
       const result = await resolver.resolve({ item, url: "https://example.test/a" });
       expect(calls).to.have.length(1);
-      expect(result.message).to.include(header === future ? "至少等待" : "可靠等待时间");
+      expect(result.message).to.include(header === future ? "至少等待" : "稍后重新查找");
     }
   });
   it("重定向拒绝时请求host和响应host都停止，不阻止其他站点", async function () {

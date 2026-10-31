@@ -91,6 +91,18 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
     expect(fetches).to.equal(beforeLimitCheck, "超限不得开始网络预检");
   });
 
+  it("混合批次跳过只读条目且不获取其来源", async function () {
+    const writable = makeItem(1); const readonly = makeItem(2);
+    readonly.isEditable = () => false;
+    const fetched = [];
+    const previews = await api.preflightBatch([writable, readonly], {
+      fetch: async (url) => { fetched.push(url); return { itemType: "book", url, title: "上游" }; },
+    });
+    expect(fetched).to.deep.equal([writable.fields.url]);
+    expect(previews[1].status).to.equal("skipped");
+    expect(previews[1].message).to.include("只读");
+  });
+
   it("0、1、50 条发送稳定的批次、条目与路线进度", async function () {
     const zeroEvents = [];
     expect(await api.preflightBatch([], { onProgress: (event) => zeroEvents.push(event) })).to.deep.equal([]);
@@ -161,7 +173,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
     expect(events.some((event) => event.stage === "item-complete")).to.equal(false);
   });
 
-  it("请求中取消会等待当前请求结束，随后不发下一条", async function () {
+  it("请求中取消不等待无响应来源，迟到结果不进入预览或下一条", async function () {
     const controller = new AbortController();
     const events = [];
     let resolveFetch;
@@ -174,20 +186,20 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
       },
       onProgress: (event) => events.push(event),
     });
+    const outcome = running.catch(error => error);
     await Promise.resolve();
     controller.abort();
-    expect(events.at(-1).stage).to.equal("stopping");
-    resolveFetch();
     let thrown;
     try {
-      await running;
-    } catch (error) {
-      thrown = error;
+      thrown = await Promise.race([outcome, new Promise((_, reject) => setTimeout(() => reject(new Error("取消仍在等待来源")), 100))]);
+    } finally {
+      resolveFetch();
     }
-
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(thrown).to.be.instanceOf(api.BatchPreflightCancelledError);
     expect(fetches).to.equal(1);
     expect(events.at(-1).stage).to.equal("cancelled");
+    expect(events.slice(-2).map(event => event.stage)).to.deep.equal(["stopping", "cancelled"]);
     expect(events.some((event) => event.stage === "item-complete")).to.equal(false);
   });
 
@@ -362,7 +374,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
       }),
     });
     expect(previews[0].status).to.equal("failed");
-    expect(previews[0].message).to.include("同源验证失败");
+    expect(previews[0].message).to.include("来源与条目网址不一致");
     expect(item.counters).to.deep.equal({ set: 0, save: 0 });
   });
 
@@ -548,7 +560,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
     expect(item.fields.publisher).to.equal("旧值");
     expect(item.counters.save).to.equal(2, "首次写入后应再保存一次补偿值");
     expect(result.items[0].status).to.equal("failed");
-    expect(result.items[0].operations[0].message).to.include("已恢复审核前字段值");
+    expect(result.items[0].operations[0].message).to.include("已恢复更新前的内容");
   });
 
   it("附件与 note 的 applied 日志失败时回收刚创建的子条目", async function () {
@@ -591,7 +603,7 @@ describe("batchSyncUpdate（纯 mock，不写真实 Zotero 库）", function () 
         if (event.status === "applied") throw new Error("journal unavailable");
       },
     });
-    expect(result.items[0].operations[0].message).to.include("严重");
+    expect(result.items[0].operations[0].recoveryRequired).to.equal(true);
     expect(result.items[0].operations[0].message).to.include("补偿也失败");
   });
 

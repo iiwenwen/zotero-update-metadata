@@ -1,0 +1,206 @@
+# 对话框文案：预检 · 审核 · 执行 · 撤销 · 结果 · 更新记录
+#
+# 名词表（字段名、作者角色、来源名、获取方式、时间占位）在 src/modules/metadataDisplay.ts，
+# 命令式弹窗（Zotero.alert）在 src/utils/locale.ts，都不在这里重复。
+# 带 $ 参数的消息由 dialogCopy.apply() 在挂载后填入；其余在开窗时批量解析。
+
+## 通用
+dlg-common-cancel = 取消
+dlg-common-unnamed-item = 未命名条目
+dlg-common-not-filled = 未填写
+
+## 预检进度
+dlg-preflight-title = 正在获取来源信息
+dlg-preflight-preparing = 正在准备
+dlg-preflight-stage-item = 正在检查条目
+dlg-preflight-stage-route = 正在获取来源信息
+dlg-preflight-stage-item-done = 条目检查完成
+dlg-preflight-stage-stopping = 正在停止
+dlg-preflight-stage-done = 检查完成
+dlg-preflight-stage-cancelled = 已停止
+dlg-preflight-progress = 已完成 { $done } / { $total }
+dlg-preflight-current-item = 当前条目
+dlg-preflight-current-stage = 当前阶段
+dlg-preflight-meter = 查找进度
+dlg-preflight-stopping = 正在停止…
+dlg-preflight-cancel = 取消
+
+## 审核
+dlg-review-title = 审核条目更新
+dlg-review-overview = { $total } 个条目 · { $ready } 个可更新
+dlg-review-selection-summary = 已勾选 { $items } 个条目 · { $ops } 项更新
+dlg-review-selection-help = 勾选要更新的内容。然后点击“更新所选内容”。
+dlg-review-confirm = 更新所选内容
+dlg-review-empty = 没有可审核的内容
+dlg-review-nothing-to-update = 未发现更新内容
+dlg-review-item-skipped = 此条目未更新。
+dlg-review-refresh = 重新查找
+dlg-review-refresh-doi = 改用 DOI 查找
+dlg-review-filter-all = 全部
+dlg-review-filter-ready = 可更新
+dlg-review-filter-identity = 待核对身份
+dlg-review-filter-blocked = 无法更新
+dlg-review-filter-empty = 没有符合筛选条件的条目
+dlg-review-fill-all = 勾选所有条目的空白字段
+dlg-review-fill-all-hint = 勾选本批所有条目中已找到新内容的空白字段（含空作者名单），不受侧栏筛选影响。已有内容、附件和笔记需另行勾选；点击“更新所选内容”后才写入。
+dlg-review-select-attachments = 勾选本条全部附件
+dlg-review-clear-attachments = 取消本条附件勾选
+dlg-review-select-notes = 勾选本条全部笔记
+dlg-review-clear-notes = 取消本条笔记勾选
+dlg-review-summary-detail = 补全 { $fills } · 替换 { $replaces } · 附件 { $attachments } · 笔记 { $notes }
+dlg-review-nav = 本次审核条目
+dlg-review-item-meta = { $title } · { $state }
+dlg-review-item-meta-count = { $title } · 已选 { $selected } / { $total } 项
+dlg-review-count = 已选 { $selected } / { $total } 项
+dlg-review-status-pending = 正在检查
+dlg-review-status-ready = 可更新
+dlg-review-status-blocked = 无法更新
+dlg-review-status-skipped = 未更新
+dlg-review-status-failed = 获取失败
+dlg-review-reason-unsupported = 不支持此来源
+dlg-review-reason-no-result = 未获取到条目信息
+dlg-review-reason-access-denied = 来源拒绝访问
+dlg-review-reason-rate-limited = 来源限制了访问
+dlg-review-reason-invalid-response = 无法识别来源信息
+dlg-review-status-applied = 已更新
+dlg-review-status-partial = 部分完成
+dlg-review-status-rolled-back = 已撤销
+dlg-review-status-rollback-conflict = 无法完全撤销
+dlg-review-status-identity = 待核对身份
+dlg-review-identity-check = 确认是同一条目
+dlg-review-identity-detail = 已匹配：{ $fields }。请确认来源对应当前条目。
+dlg-review-identity-fields-fallback = 标题等基本信息
+dlg-review-identity-pending = 确认身份前，此条目不纳入更新。
+dlg-review-identity-confirmed = 身份已确认。点击“更新所选内容”后才会更新此条目。
+dlg-review-col-accept = 采用
+dlg-review-col-field = 项目
+dlg-review-col-local = 现有内容
+dlg-review-col-incoming = 来源内容
+dlg-review-diff-table = 现有内容与来源内容对比
+dlg-review-accept-field = 采用来源内容：{ $field }
+dlg-review-fill-empty = 补全空白
+dlg-review-expand = { $preview }（展开全文）
+dlg-review-creators-accept = 采用来源中的完整作者与贡献者名单
+dlg-review-creators-field = 完整名单
+dlg-review-creators-empty = （无作者或贡献者）
+dlg-review-creator-empty = （名称为空）
+dlg-review-section-fields = 字段
+dlg-review-section-creators = 作者与贡献者
+dlg-review-section-attachments = 新增附件
+dlg-review-section-notes = 新增笔记
+dlg-review-section-fields-count = { $count } 项
+dlg-review-section-creators-meta = 整组选择
+dlg-review-unnamed-attachment = 未命名附件
+dlg-review-note-label = 笔记 { $index }
+dlg-review-note-preview = 预览笔记
+dlg-review-note-empty = （笔记内容为空）
+dlg-review-additions-hint = 仅新增附件和笔记。请核对重复项。
+dlg-review-excluded = 有 { $count } 个字段不适用于此条目，已排除。
+dlg-review-excluded-details = 查看详情
+dlg-review-source = 来源：{ $source }
+dlg-review-source-missing = 未提供
+dlg-review-source-unknown = 未知来源
+dlg-review-source-douban = 豆瓣读书
+dlg-review-technical = 技术详情
+
+## 执行进度
+dlg-exec-title-update = 正在更新条目
+dlg-exec-title-undo = 正在撤销最近一次更新
+dlg-exec-progress = 已处理 { $done } / { $total } 个条目
+dlg-exec-preparing = 正在准备
+dlg-exec-processing = 正在处理
+dlg-exec-stage-attachment = 正在新增附件
+dlg-exec-stage-note = 正在新增笔记
+dlg-exec-stage-field = 正在更新字段
+dlg-exec-stage-item-done = 条目处理完成
+dlg-exec-close-blocked = 更新尚未完成。请等待处理结束。关闭窗口不会撤销已完成的更新。
+dlg-exec-note = 正在处理所选内容。处理结束后显示结果。已完成的更新会保留。
+dlg-exec-meter-update = 更新进度
+dlg-exec-meter-undo = 撤销进度
+dlg-exec-open-failed = 无法打开执行进度窗口
+
+## 撤销确认
+dlg-undo-title = 撤销最近一次更新
+dlg-undo-window-title = 确认撤销更新
+dlg-undo-time = 更新时间：{ $time }
+dlg-undo-restore-field = 恢复{ $field }：{ $after } → { $before }
+dlg-undo-restore-url = 恢复更新前的网址
+dlg-undo-restore-creators = 恢复更新前的作者与贡献者名单
+dlg-undo-remove-attachment = 移除本次新增且未被修改的附件
+dlg-undo-remove-note = 移除本次新增且未被修改的笔记
+dlg-undo-verify-field = { $field }：结果待核对，本次不改写
+dlg-undo-verify-creators = 作者与贡献者：结果待核对，本次不改写
+dlg-undo-verify-created = 新增内容：结果待核对，本次不移除
+dlg-undo-note = 撤销会保留原有附件和笔记，也会保留更新后被修改的内容。无法撤销的项目会在结果中说明。
+dlg-undo-cancel = 保留更新
+dlg-undo-confirm = 确认撤销
+
+## 结果
+dlg-result-title-update = 更新结果
+dlg-result-title-undo = 撤销结果
+dlg-result-title-retry = 重试结果
+dlg-result-summary-update = 已更新 { $applied } 个条目 · 部分完成 { $partial } 个 · 未更新 { $skipped } 个
+dlg-result-summary-undo = 已撤销 { $rolledBack } 项 · 保留 { $conflicts } 项 · 失败 { $failed } 项
+dlg-result-item = { $title } · { $state }
+dlg-result-state-applied = 已更新
+dlg-result-state-partial = 部分完成
+dlg-result-state-failed = 未完成
+dlg-result-state-skipped = 未更新
+dlg-result-state-rolled-back = 已撤销
+dlg-result-state-rollback-conflict = 部分内容未撤销
+dlg-result-state-unknown = 结果待核对
+dlg-result-operation = { $label }：{ $state }
+dlg-result-operation-message = { $label }：{ $state }；{ $message }
+dlg-result-label-creators = 作者与贡献者
+dlg-result-label-attachment = 附件
+dlg-result-label-note = 笔记
+dlg-result-op-applied = 已更新
+dlg-result-op-added = 已新增
+dlg-result-op-rolled-back = 已撤销
+dlg-result-op-conflict = 保留当前内容
+dlg-result-op-failed = 未完成
+dlg-result-records = 查看更新记录
+dlg-result-retry = 重试失败内容
+dlg-result-done = 完成
+
+## 更新记录
+dlg-history-title = 更新记录
+dlg-history-batch-running = 进行中
+dlg-history-batch-completed = 已完成
+dlg-history-batch-partial = 部分完成
+dlg-history-batch-failed = 失败
+dlg-history-batch-rolled-back = 已撤销
+dlg-history-batch-rollback-partial = 部分撤销
+dlg-history-op-planned = 待执行
+dlg-history-op-applied = 已更新
+dlg-history-op-failed = 失败
+dlg-history-op-rolled-back = 已撤销
+dlg-history-op-rollback-conflict = 无法完全撤销
+dlg-history-kind-field = 字段
+dlg-history-kind-creators = 作者与贡献者
+dlg-history-kind-attachment = 附件
+dlg-history-kind-note = 笔记
+dlg-history-headline = { $batches } 次更新
+dlg-history-headline-incomplete = { $batches } 次更新 · { $incomplete } 次尚未结束
+dlg-history-subline = { $items } 个条目 · { $ops } 项操作
+dlg-history-subline-attention = { $items } 个条目 · { $ops } 项操作 · { $attention } 项需处理
+dlg-history-empty-headline = 还没有更新记录
+dlg-history-unavailable-headline = 无法读取更新记录
+dlg-history-empty-subline = 没有更新记录
+dlg-history-none = 没有可显示的更新详情
+dlg-history-no-operations = 没有操作记录
+dlg-history-no-items = 这次更新没有条目记录
+dlg-history-latest = 最近一次更新
+dlg-history-earlier = 更早的更新 { $index }
+dlg-history-unfinished = 未结束
+dlg-history-batch-meta = 开始：{ $start } · 完成：{ $end } · { $items } 个条目 · { $ops } 项操作
+dlg-history-op-values = { $before } → { $after }
+dlg-history-source = 来源：{ $source }
+dlg-history-locate = 在文库中定位条目
+dlg-history-locate-title = 定位原条目，不修改内容
+dlg-history-locate-disabled = 原条目或窗口已不可用。更新记录仍可查看。
+dlg-history-locate-failed = 无法定位原条目
+dlg-history-technical = 技术详情
+dlg-history-nav = 选择更新记录
+dlg-history-reload = 重新读取记录
+dlg-history-back = 返回

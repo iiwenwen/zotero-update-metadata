@@ -278,6 +278,17 @@ describe("交付安全收口F1/F2（生产函数与内存端口，不启动Zoter
     expect(JSON.stringify(evidence)).not.to.include("localEvidence");
   });
 
+  it("审核后权限变为只读时拒绝写入", async function () {
+    const p = port();
+    const selected = copy(await selection(p));
+    p.item.isEditable = () => false;
+    const result = await api.applyBatch([selected], { port: p, getItem: p.getItem });
+    expect(result.failed).to.equal(1);
+    expect(p.calls.saves).to.equal(0);
+    expect(p.calls.fields).to.equal(0);
+    expect(p.calls.notes).to.equal(0);
+  });
+
   it("F2：planned回调篡改原Selection不能放宽执行中的组合快照", async function () {
     const p = port();
     const selected = copy(await selection(p));

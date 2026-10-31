@@ -1,0 +1,1413 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>审核对话框 · 优化稿</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     这一层是预览页自己的外框，不属于设计稿。
+     设计稿本体从 .dialog-window 开始，只用系统色，跟随 color-scheme。
+     ───────────────────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  html[data-theme="light"] { --page-bg: #e7e7ea; --page-ink: #1d1d1f; --page-muted: #6b6b70; --page-line: #cfcfd4; }
+  html[data-theme="dark"] { --page-bg: #141416; --page-ink: #f2f2f4; --page-muted: #9a9aa2; --page-line: #2e2e33; }
+
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 13px;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    padding: 26px 24px 56px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .stage { width: min(1080px, 100%); display: flex; flex-direction: column; gap: 14px; }
+
+  .stage-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
+  .stage-note { color: var(--page-muted); font-size: 12px; }
+  .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in oklab, var(--page-ink) 8%, transparent); }
+  .seg-btn {
+    appearance: none; border: 0; background: transparent; color: var(--page-ink);
+    font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 6px; cursor: pointer;
+  }
+  .seg-btn.is-on { background: var(--page-bg); font-weight: 600; box-shadow: 0 0 0 1px var(--page-line) inset; }
+
+  .changes { margin: 6px 0 0; padding: 0 0 0 18px; color: var(--page-muted); font-size: 12px; line-height: 1.75; }
+  .changes li { margin-bottom: 2px; }
+  .changes b { color: var(--page-ink); font-weight: 600; }
+  .changes code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--page-ink); opacity: .72; }
+
+  /* ─────────────────────────────────────────────────────────────
+     设计稿：Zotero 对话框窗口。系统色 + color-scheme，不引入品牌色。
+     ───────────────────────────────────────────────────────────── */
+  .dialog-window {
+    width: 100%;
+    height: 760px;
+    display: grid;
+    grid-template-rows: 30px minmax(0, 1fr) auto;
+    background: Canvas;
+    color: CanvasText;
+    color-scheme: light;
+    --fill-secondary: color-mix(in oklab, CanvasText 64%, Canvas);
+    --muted: var(--fill-secondary, GrayText);
+    /* 现代感的关键一步：结构线不再用 ButtonBorder 那种硬线，换成低对比发丝线 */
+    --hairline: color-mix(in oklab, CanvasText 9%, transparent);
+    --hairline-strong: color-mix(in oklab, CanvasText 16%, transparent);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px ButtonBorder, 0 20px 52px rgba(0, 0, 0, .26);
+    font-size: 13.5px;
+  }
+  html[data-theme="dark"] .dialog-window { color-scheme: dark; }
+
+  .titlebar {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; letter-spacing: .01em;
+    background: color-mix(in oklab, CanvasText 5%, Canvas);
+    border-bottom: 1px solid ButtonBorder;
+  }
+
+  .content { min-height: 0; overflow: hidden; position: relative; }
+  .view { height: 100%; }
+  [hidden] { display: none !important; }
+
+  .buttonrow {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 12px 20px; border-top: 1px solid ButtonBorder; background: Canvas;
+  }
+  .btn {
+    appearance: none; font: inherit; font-size: 13px; line-height: 1;
+    padding: 0 15px; min-height: 28px; border-radius: 6px;
+    border: 1px solid ButtonBorder; color: CanvasText;
+    background: color-mix(in oklab, CanvasText 4%, Canvas); cursor: pointer;
+  }
+  .btn:hover { background: color-mix(in oklab, CanvasText 9%, Canvas); }
+  .btn-primary { background: AccentColor; border-color: transparent; color: AccentColorText; font-weight: 600; }
+  .btn-primary:hover { background: color-mix(in oklab, AccentColor 88%, CanvasText); }
+  .btn-primary:disabled { background: color-mix(in oklab, CanvasText 14%, Canvas); color: var(--muted); cursor: not-allowed; }
+  .btn-quiet { background: transparent; border-color: transparent; color: CanvasText; }
+  .btn-quiet:hover { background: color-mix(in oklab, CanvasText 8%, transparent); }
+
+  /* ═════════════════ 现状：按 batchConfirmDialog.ts 的样式还原 ═════════════════ */
+  .current-view {
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%; background: Canvas; color: CanvasText; line-height: 1.55;
+  }
+  .current-view h2, .current-view p { margin: 0; }
+  .cur-overview {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    padding: 18px 24px 16px; border-bottom: 1px solid ButtonBorder;
+  }
+  .cur-overview-title { font-size: 1.3em; font-weight: 600; }
+  .cur-progress { color: var(--muted); font-size: .95em; }
+  .cur-workspace { display: grid; grid-template-columns: 222px minmax(0, 1fr); min-height: 0; }
+  .cur-sidebar { padding: 16px 10px; overflow: auto; background: Field; border-right: 1px solid ButtonBorder; }
+  .cur-sidebar select { width: 100%; font: inherit; font-size: 12px; }
+  .cur-detail-pane { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
+  .cur-detail { padding: 24px 28px 30px; min-width: 0; }
+  .cur-detail-header { margin-bottom: 24px; }
+  .cur-detail-title { font-size: 1.3em; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+  .cur-source { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 5px; color: var(--muted); font-size: .95em; }
+  .cur-identity { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 13px 15px; margin-bottom: 20px; border-left: 2px solid CanvasText; background: Field; }
+  .cur-identity p { margin-top: 5px; font-size: .95em; color: var(--muted); }
+  .cur-section { margin: 0 0 20px; }
+  .cur-section-heading { margin-bottom: 10px; }
+  .cur-section-title { font-size: 1em; font-weight: 600; }
+  .cur-section-meta { margin-inline-start: 12px; color: var(--muted); font-size: .9em; }
+  .cur-table { width: 100%; table-layout: fixed; border-collapse: collapse; font: inherit; }
+  .cur-table col.c-check { width: 36px; }
+  .cur-table col.c-field { width: 90px; }
+  .cur-table th { padding: 0 12px 9px 0; text-align: left; white-space: nowrap; font-size: .9em; font-weight: 500; color: var(--muted); border-bottom: 1px solid ButtonBorder; }
+  .cur-table td { vertical-align: top; padding: 12px 12px 12px 0; border-bottom: 1px solid ButtonBorder; line-height: 1.7; overflow-wrap: anywhere; }
+  .cur-table th:last-child, .cur-table td:last-child { padding-right: 0; }
+  .cur-field-name { color: var(--muted); font-size: .95em; font-weight: 400; }
+  .cur-field-hint { display: block; margin-top: 3px; color: var(--muted); font-size: .85em; }
+  .cur-value { white-space: pre-wrap; }
+  .cur-empty-value { color: var(--muted); }
+  .cur-creators { padding: 0; margin: 0; list-style: none; }
+  .cur-creators li + li { margin-top: 3px; }
+  .cur-addition-hint { margin-top: 10px; font-size: .9em; color: var(--muted); }
+  .cur-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 22px; border-top: 1px solid ButtonBorder; }
+  .cur-summary { font-size: 1em; font-weight: 500; }
+  .cur-help { margin-top: 2px; font-size: .9em; color: var(--muted); }
+  .cur-native-nav-note { margin-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ═════════════════ 优化后 ═════════════════ */
+  .optimized-view {
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%; background: Canvas; color: CanvasText; line-height: 1.55;
+  }
+
+  .opt-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+    padding: 18px 26px 15px; border-bottom: 1px solid var(--hairline);
+  }
+  .opt-headline { margin: 0; font-size: 1.3em; font-weight: 600; letter-spacing: -.012em; }
+  .opt-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  .opt-body { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 0; }
+
+  /* 侧栏 */
+  .opt-nav { display: flex; flex-direction: column; min-height: 0; background: Field; border-right: 1px solid var(--hairline); }
+  .opt-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 12px 10px; }
+  .chip {
+    appearance: none; font: inherit; font-size: 11.5px; line-height: 1;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 8px; border-radius: 999px; cursor: pointer;
+    border: 0; background: transparent; color: var(--muted);
+  }
+  .chip span { font-variant-numeric: tabular-nums; opacity: .55; font-weight: 400; }
+  .chip:hover { background: color-mix(in oklab, CanvasText 6%, transparent); color: CanvasText; }
+  .chip.is-on { background: color-mix(in oklab, CanvasText 12%, transparent); color: CanvasText; font-weight: 600; }
+  .chip.is-on span { opacity: .7; }
+
+  .opt-rows { display: flex; flex-direction: column; gap: 1px; padding: 0 9px 12px; overflow: auto; min-height: 0; }
+  .nav-row {
+    appearance: none; border: 0; background: transparent; color: CanvasText; font: inherit;
+    display: flex; gap: 10px; align-items: flex-start; text-align: left;
+    padding: 9px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .nav-row:hover { background: color-mix(in oklab, CanvasText 7%, transparent); }
+  .nav-row.is-on { background: color-mix(in oklab, CanvasText 12%, transparent); }
+  .nav-row.is-on .nav-title { font-weight: 600; }
+  .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; background: CanvasText; }
+  .dot-identity { background: transparent; box-shadow: 0 0 0 1.5px CanvasText inset; }
+  .dot-blocked { background: color-mix(in oklab, CanvasText 34%, Canvas); }
+  .nav-text { min-width: 0; display: block; }
+  .nav-title {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; font-size: 12.5px; line-height: 1.45;
+  }
+  .nav-meta { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* 详情 */
+  .opt-detail-pane { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
+  .item-detail { padding: 22px 28px 28px; }
+  .item-title { margin: 0; font-size: 1.26em; line-height: 1.42; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .item-source { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 7px 0 0; font-size: 12.5px; color: var(--muted); }
+  .item-source .sep { opacity: .5; }
+
+  /* 身份确认卡片：待确认时完整展开，确认后收起成一行 */
+  .identity { margin: 18px 0 20px; border: 1px solid var(--hairline-strong); border-radius: 10px; background: Field; }
+  .identity-head { display: flex; align-items: center; gap: 8px; padding: 11px 15px; border-bottom: 1px solid var(--hairline); }
+  .identity-tag {
+    flex: none; font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+    padding: 2px 6px; border-radius: 4px; border: 1px solid CanvasText; color: CanvasText;
+  }
+  .identity-heading { font-size: 12.5px; font-weight: 600; }
+  .identity-mark { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .identity-body { padding: 11px 14px 13px; }
+  .identity-desc { margin: 0; font-size: 12px; color: CanvasText; }
+  .identity-hint { margin: 5px 0 0; font-size: 12px; color: var(--muted); }
+  .identity-check { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 12.5px; cursor: pointer; }
+  .identity [data-when="confirmed"], .identity .identity-mark { display: none; }
+  .identity.is-confirmed [data-when="pending"] { display: none; }
+  .identity.is-confirmed [data-when="confirmed"] { display: block; }
+  .identity.is-confirmed .identity-mark { display: block; }
+  .identity.is-confirmed .identity-head { border-bottom: 0; padding: 9px 14px; }
+  .identity.is-confirmed .identity-body { display: none; }
+  .identity.is-confirmed { background: transparent; }
+
+  /* 分区 */
+  .sect { margin: 0 0 20px; }
+  .sect-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .sect-title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+  .sect-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sect-action {
+    margin-left: auto; appearance: none; border: 0; background: transparent; color: CanvasText;
+    font: inherit; font-size: 12px; padding: 3px 7px; border-radius: 5px; cursor: pointer;
+  }
+  .sect-action:hover { background: color-mix(in oklab, CanvasText 8%, transparent); }
+  /* 字段表自带表头，不再另起一行分区标题；只在紧跟来源行时留出呼吸 */
+  .item-source + .sect { margin-top: 16px; }
+
+  /* 对比表 */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .diff { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .diff col.c-check { width: 32px; }
+  .diff col.c-field { width: 116px; }
+  .diff col.c-old { width: 32%; }
+  .diff th {
+    position: sticky; top: 0; z-index: 1; background: Canvas;
+    padding: 0 14px 7px 0; text-align: left; white-space: nowrap;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em; color: var(--muted);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .diff td { padding: 12px 14px 12px 0; vertical-align: top; border-bottom: 1px solid var(--hairline); line-height: 1.6; overflow-wrap: anywhere; }
+  .diff th:first-child, .diff td:first-child { padding-left: 2px; }
+  .diff th:last-child, .diff td:last-child { padding-right: 0; }
+  .diff tbody tr { cursor: pointer; }
+  .diff tbody tr:hover td { background: color-mix(in oklab, CanvasText 3.5%, transparent); }
+  .diff tbody tr.is-on .f-name { font-weight: 600; }
+  .diff tbody tr:last-child td { border-bottom: 0; }
+  .diff input[type="checkbox"] { margin: 2px 0 0; }
+
+  .f-name { font-size: 12.5px; font-weight: 500; }
+  .f-hint { margin-left: 5px; font-size: 11px; color: var(--muted); }
+  .v-copy { margin: 0; white-space: pre-wrap; }
+  .v-empty { color: var(--muted); }
+  mark { background: color-mix(in oklab, AccentColor 30%, transparent); color: CanvasText; border-radius: 2px; padding: 0 1px; }
+  .v-long summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  .v-long[open] summary { margin-bottom: 6px; }
+
+  .creators { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+  .creators li + li { margin-top: 3px; }
+
+  .add-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 9px 0; }
+  .add-row + .add-row { border-top: 1px solid var(--hairline); }
+  .add-row input { margin-top: 2px; }
+  .add-row strong { font-size: 12.5px; font-weight: 500; }
+  .add-note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+  .add-hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+  .state-block { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--hairline-strong); border-radius: 10px; background: Field; }
+  .state-title { margin: 0; font-size: 13px; font-weight: 600; }
+  .state-desc { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+  .state-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+
+  .opt-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    padding: 12px 28px; border-top: 1px solid var(--hairline); background: Field;
+  }
+  .opt-summary { margin: 0; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .opt-break { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* ─────────────────────────────────────────────────────────────
+     批注层：评审工具，不属于设计稿。
+     用固定的红色与设计稿的系统色刻意区分，避免被误认为界面的一部分。
+     ───────────────────────────────────────────────────────────── */
+  .seg-btn .anno-count {
+    display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 3px;
+    border-radius: 8px; background: color-mix(in oklab, var(--page-ink) 15%, transparent);
+    font-size: 10.5px; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .seg-btn.is-on .anno-count { background: rgba(255, 255, 255, .3); }
+
+  body.has-anno-bar { padding-bottom: 96px; }
+
+  .anno-pin {
+    position: fixed; z-index: 60; width: 21px; height: 21px; padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 50% 50% 50% 3px; border: 1.5px solid #fff;
+    background: #e5484d; color: #fff;
+    font: 700 10.5px/1 -apple-system, "PingFang SC", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: 0 1px 5px rgba(0, 0, 0, .4);
+  }
+  .anno-pin.is-open { background: #b3261e; }
+
+  body.is-annotating .content { cursor: crosshair; }
+  .anno-hover {
+    outline: 1px dashed rgba(229, 72, 77, .9) !important;
+    outline-offset: -1px !important;
+    cursor: crosshair !important;
+  }
+  .anno-flash-target {
+    outline: 2px solid #e5484d !important;
+    outline-offset: 2px !important;
+  }
+
+  .anno-popover {
+    position: fixed; z-index: 70; width: 276px; padding: 10px;
+    background: Canvas; color: CanvasText; color-scheme: light;
+    border: 1px solid ButtonBorder; border-radius: 9px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .3);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 12px;
+  }
+  html[data-theme="dark"] .anno-popover { color-scheme: dark; }
+  .anno-target {
+    margin: 0 0 7px; font-size: 11px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .anno-popover textarea {
+    width: 100%; min-height: 66px; resize: vertical; display: block;
+    font: inherit; font-size: 12.5px; line-height: 1.5;
+    padding: 6px 7px; border-radius: 6px; border: 1px solid ButtonBorder;
+    background: Field; color: CanvasText;
+  }
+  .anno-popover-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .anno-spacer { margin-left: auto; }
+  .anno-mini {
+    appearance: none; font: inherit; font-size: 12px; line-height: 1;
+    padding: 5px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid ButtonBorder; color: CanvasText;
+    background: color-mix(in oklab, CanvasText 4%, Canvas);
+  }
+  .anno-mini:hover { background: color-mix(in oklab, CanvasText 10%, Canvas); }
+  .anno-mini-primary { background: AccentColor; border-color: transparent; color: AccentColorText; font-weight: 600; }
+  .anno-mini-danger { color: #e5484d; border-color: color-mix(in oklab, #e5484d 45%, ButtonBorder); }
+  .anno-hint { margin: 7px 0 0; font-size: 11px; color: var(--muted); }
+
+  .anno-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 65;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 16px;
+    background: Canvas; color: CanvasText; color-scheme: light;
+    border-top: 1px solid ButtonBorder;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, .16);
+    font-size: 12px;
+  }
+  html[data-theme="dark"] .anno-bar { color-scheme: dark; }
+  .anno-bar-text { margin-right: auto; color: var(--muted); }
+  .anno-bar-text b { color: CanvasText; font-variant-numeric: tabular-nums; }
+  .anno-flash { margin-left: 10px; color: #e5484d; font-weight: 600; }
+
+  .anno-list {
+    position: fixed; left: 0; right: 0; bottom: 47px; z-index: 64;
+    max-height: 42vh; overflow: auto; padding: 10px 16px 14px;
+    background: Canvas; color: CanvasText; color-scheme: light;
+    border-top: 1px solid ButtonBorder;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .16);
+  }
+  html[data-theme="dark"] .anno-list { color-scheme: dark; }
+  .anno-empty { margin: 6px 0; font-size: 12px; color: var(--muted); }
+  .anno-item {
+    display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 10px; align-items: start; padding: 9px 0;
+    border-top: 1px solid ButtonBorder;
+  }
+  .anno-item:first-child { border-top: 0; }
+  .anno-item-n {
+    width: 20px; height: 20px; border-radius: 50% 50% 50% 3px;
+    background: #e5484d; color: #fff; font-size: 10.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .anno-item-text { margin: 0; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .anno-item-meta { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
+  .anno-item-actions { display: flex; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="stage-bar" role="toolbar" aria-label="预览控制">
+    <div class="seg" role="group" aria-label="视图">
+      <button class="seg-btn" type="button" data-mode="current">现状 · 静态还原</button>
+      <button class="seg-btn is-on" type="button" data-mode="optimized">优化后 · 可交互</button>
+    </div>
+    <div class="seg" role="group" aria-label="外观">
+      <button class="seg-btn is-on" type="button" data-theme-btn="light">浅色</button>
+      <button class="seg-btn" type="button" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="seg" role="group" aria-label="批注">
+      <button class="seg-btn" type="button" id="anno-toggle" aria-pressed="false">批注 <span class="anno-count" id="anno-count">0</span></button>
+    </div>
+  </div>
+
+  <div class="dialog-window" data-screen-label="审核对话框">
+    <div class="titlebar">确认条目信息更新</div>
+
+    <div class="content">
+
+      <!-- ══════════ 现状 ══════════ -->
+      <div class="view current-view" data-view="current" data-screen-label="现状" hidden>
+        <header class="cur-overview">
+          <strong class="cur-overview-title">确认条目信息更新</strong>
+          <div class="cur-progress">4 个条目 · 3 个可更新</div>
+        </header>
+
+        <div class="cur-workspace">
+          <nav class="cur-sidebar" aria-label="本次审核条目">
+            <select multiple size="4" aria-label="本次审核条目">
+              <option>深度学习在医学影像诊断中的应用综述 · 可更新</option>
+              <option>设计中的设计 · 待确认身份</option>
+              <option>Handbook of Qualitative Research · 无法更新</option>
+              <option>生成式人工智能与学术写作伦理 · 可更新</option>
+            </select>
+          </nav>
+
+          <main class="cur-detail-pane">
+            <article class="cur-detail">
+              <header class="cur-detail-header">
+                <h2 class="cur-detail-title">深度学习在医学影像诊断中的应用综述</h2>
+                <div class="cur-source"><span>来源：Crossref</span></div>
+              </header>
+
+              <section class="cur-section">
+                <table class="cur-table" aria-label="现有内容与找到的新内容对比">
+                  <colgroup><col class="c-check"><col class="c-field"><col><col></colgroup>
+                  <thead>
+                    <tr><th scope="col">采用</th><th scope="col">字段</th><th scope="col">现有内容</th><th scope="col">新内容</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td><label class="cur-field-name">期刊</label><span class="cur-field-hint">补全空白</span></td>
+                      <td><p class="cur-value cur-empty-value">未填写</p></td>
+                      <td><p class="cur-value">Nature Medicine</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox"></td>
+                      <td><label class="cur-field-name">卷</label></td>
+                      <td><p class="cur-value">12</p></td>
+                      <td><p class="cur-value">13</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td><label class="cur-field-name">页码</label><span class="cur-field-hint">补全空白</span></td>
+                      <td><p class="cur-value cur-empty-value">未填写</p></td>
+                      <td><p class="cur-value">1024–1038</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox"></td>
+                      <td><label class="cur-field-name">日期</label></td>
+                      <td><p class="cur-value">2023-05</p></td>
+                      <td><p class="cur-value">2023-05-18</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td><label class="cur-field-name">摘要</label><span class="cur-field-hint">补全空白</span></td>
+                      <td><p class="cur-value cur-empty-value">未填写</p></td>
+                      <td>
+                        <details>
+                          <summary>深度学习正在快速改变医学影像的判读方式，尤其是在……（展开全文）</summary>
+                          <p class="cur-value">深度学习正在快速改变医学影像的判读方式，尤其是在肺结节筛查、乳腺钼靶与眼底病变分级这三类任务上，回顾性研究报告的敏感度已接近高年资放射科医师。本文梳理 2018 年以来的代表性工作，比较不同网络架构在标注数据稀缺条件下的迁移表现，并讨论前瞻性验证、数据集偏倚与临床落地之间仍然存在的差距。</p>
+                        </details>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <p class="cur-addition-hint">只新增，不改动已有附件和笔记；请留意是否重复。</p>
+            </article>
+          </main>
+        </div>
+
+        <footer class="cur-footer">
+          <div>
+            <p class="cur-summary">已选择 2 个条目 · 4 项更新</p>
+            <p class="cur-help">只更新你勾选的内容，已有内容默认保留</p>
+          </div>
+        </footer>
+      </div>
+
+      <!-- ══════════ 优化后 ══════════ -->
+      <div class="view optimized-view" data-view="optimized" data-screen-label="优化后">
+        <header class="opt-header">
+          <div>
+            <h2 class="opt-headline">4 个条目 · 3 个可更新</h2>
+            <p class="opt-sub">只更新你勾选的内容，已有内容默认保留。</p>
+          </div>
+          <button class="btn btn-quiet" type="button" id="fill-all">补全所有空白</button>
+        </header>
+
+        <div class="opt-body">
+          <nav class="opt-nav" aria-label="本次审核条目">
+            <div class="opt-filters" role="group" aria-label="筛选条目">
+              <button class="chip is-on" type="button" data-filter="all">全部 <span>4</span></button>
+              <button class="chip" type="button" data-filter="ready">可更新 <span>3</span></button>
+              <button class="chip" type="button" data-filter="identity">待确认 <span>1</span></button>
+              <button class="chip" type="button" data-filter="blocked">有问题 <span>1</span></button>
+            </div>
+
+            <div class="opt-rows" role="list">
+              <button class="nav-row is-on" type="button" role="listitem" data-item="1" data-state="ready">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="nav-text">
+                  <span class="nav-title">深度学习在医学影像诊断中的应用综述</span>
+                  <span class="nav-meta" data-nav-meta="1">已选 3 / 5 项</span>
+                </span>
+              </button>
+              <button class="nav-row" type="button" role="listitem" data-item="2" data-state="ready" data-identity="1">
+                <span class="dot dot-identity" aria-hidden="true"></span>
+                <span class="nav-text">
+                  <span class="nav-title">设计中的设计</span>
+                  <span class="nav-meta" data-nav-meta="2">待确认身份</span>
+                </span>
+              </button>
+              <button class="nav-row" type="button" role="listitem" data-item="3" data-state="blocked">
+                <span class="dot dot-blocked" aria-hidden="true"></span>
+                <span class="nav-text">
+                  <span class="nav-title">Handbook of Qualitative Research</span>
+                  <span class="nav-meta" data-nav-meta="3">无法更新 · 未找到匹配</span>
+                </span>
+              </button>
+              <button class="nav-row" type="button" role="listitem" data-item="4" data-state="ready">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="nav-text">
+                  <span class="nav-title">生成式人工智能与学术写作伦理</span>
+                  <span class="nav-meta" data-nav-meta="4">已选 1 / 4 项</span>
+                </span>
+              </button>
+            </div>
+          </nav>
+
+          <main class="opt-detail-pane">
+
+            <!-- 条目 1：字段对比主场景 -->
+            <article class="item-detail" data-item="1">
+              <h2 class="item-title">深度学习在医学影像诊断中的应用综述</h2>
+              <p class="item-source"><span>来源：Crossref</span><span class="sep">·</span><span>获取方式：DOI 转换</span><span class="sep">·</span><span data-sec-meta="1-field">已选 3 / 5 项</span></p>
+
+              <section class="sect">
+                <table class="diff" aria-label="现有内容与找到的新内容对比">
+                  <colgroup><col class="c-check"><col class="c-field"><col class="c-old"><col></colgroup>
+                  <thead>
+                    <tr><th scope="col"><span class="sr-only">采用</span></th><th scope="col">项目</th><th scope="col">现有内容</th><th scope="col">新内容</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">期刊</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td><p class="v-copy">Nature Medicine</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" data-kind="field" data-change="replace"></td>
+                      <td><span class="f-name">卷</span></td>
+                      <td><p class="v-copy">12</p></td>
+                      <td><p class="v-copy"><mark>13</mark></p></td>
+                    </tr>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">页码</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td><p class="v-copy">1024–1038</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" data-kind="field" data-change="replace"></td>
+                      <td><span class="f-name">日期</span></td>
+                      <td><p class="v-copy">2023-05</p></td>
+                      <td><p class="v-copy">2023-05<mark>-18</mark></p></td>
+                    </tr>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">摘要</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td>
+                        <details class="v-long">
+                          <summary>深度学习正在快速改变医学影像的判读方式……</summary>
+                          <p class="v-copy">深度学习正在快速改变医学影像的判读方式，尤其是在肺结节筛查、乳腺钼靶与眼底病变分级这三类任务上，回顾性研究报告的敏感度已接近高年资放射科医师。本文梳理 2018 年以来的代表性工作，比较不同网络架构在标注数据稀缺条件下的迁移表现，并讨论前瞻性验证、数据集偏倚与临床落地之间仍然存在的差距。</p>
+                        </details>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+            </article>
+
+            <!-- 条目 2：身份确认 -->
+            <article class="item-detail" data-item="2" hidden>
+              <h2 class="item-title">设计中的设计</h2>
+              <p class="item-source"><span>来源：豆瓣读书</span><span class="sep">·</span><span>获取方式：ISBN 转换</span><span class="sep">·</span><span data-sec-meta="2-field">已选 2 / 4 项</span></p>
+
+              <div class="identity" data-identity>
+                <div class="identity-head">
+                  <span class="identity-tag" data-when="pending">需确认</span>
+                  <span class="identity-heading" data-when="pending">确认找到的是同一本书</span>
+                  <span class="identity-heading" data-when="confirmed">已确认是同一条，勾选内容会一起更新</span>
+                  <span class="identity-mark" aria-hidden="true">✓</span>
+                </div>
+                <div class="identity-body">
+                  <p class="identity-desc">已核对 标题、作者、出版年，还需要你确认找到的内容就是这一条。</p>
+                  <p class="identity-hint">确认前，这个条目的勾选内容不会计入更新。</p>
+                  <label class="identity-check">
+                    <input type="checkbox" data-identity-check>
+                    我确认是同一条
+                  </label>
+                </div>
+              </div>
+
+              <section class="sect">
+                <table class="diff" aria-label="现有内容与找到的新内容对比">
+                  <colgroup><col class="c-check"><col class="c-field"><col class="c-old"><col></colgroup>
+                  <thead>
+                    <tr><th scope="col"><span class="sr-only">采用</span></th><th scope="col">项目</th><th scope="col">现有内容</th><th scope="col">新内容</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">出版社</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td><p class="v-copy">广西师范大学出版社</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" data-kind="field" data-change="replace"></td>
+                      <td><span class="f-name">日期</span></td>
+                      <td><p class="v-copy">2006</p></td>
+                      <td><p class="v-copy">2006<mark>-11</mark></p></td>
+                    </tr>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">ISBN</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td><p class="v-copy">9787563358311</p></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" data-kind="field" data-change="replace"></td>
+                      <td><span class="f-name">作者</span><span class="f-hint">整组</span></td>
+                      <td><ol class="creators"><li>原研哉 · 作者</li></ol></td>
+                      <td><ol class="creators"><li>原研哉 · 作者</li><li>朱锷 · 译者</li></ol></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+            </article>
+
+            <!-- 条目 3：无法更新 -->
+            <article class="item-detail" data-item="3" hidden>
+              <h2 class="item-title">Handbook of Qualitative Research</h2>
+              <div class="state-block">
+                <p class="state-title">无法更新</p>
+                <p class="state-desc">没有找到可靠匹配。可以重新查找，或改用 DOI 精确查找。</p>
+                <div class="state-actions">
+                  <button class="btn" type="button">重新查找</button>
+                  <button class="btn" type="button">改用 DOI 查找</button>
+                </div>
+              </div>
+            </article>
+
+            <!-- 条目 4：新增附件与笔记 -->
+            <article class="item-detail" data-item="4" hidden>
+              <h2 class="item-title">生成式人工智能与学术写作伦理</h2>
+              <p class="item-source"><span>来源：Crossref</span><span class="sep">·</span><span data-sec-meta="4-field">已选 1 / 1 项</span></p>
+
+              <section class="sect">
+                <table class="diff" aria-label="现有内容与找到的新内容对比">
+                  <colgroup><col class="c-check"><col class="c-field"><col class="c-old"><col></colgroup>
+                  <thead>
+                    <tr><th scope="col"><span class="sr-only">采用</span></th><th scope="col">项目</th><th scope="col">现有内容</th><th scope="col">新内容</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-on">
+                      <td><input type="checkbox" data-kind="field" data-change="new" checked></td>
+                      <td><span class="f-name">期刊</span></td>
+                      <td><p class="v-copy v-empty" title="未填写">—</p></td>
+                      <td><p class="v-copy">Learned Publishing</p></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <section class="sect">
+                <div class="sect-head">
+                  <h3 class="sect-title">新增附件</h3>
+                  <span class="sect-meta" data-sec-meta="4-attachment">2 项 · 已选 0</span>
+                  <button class="sect-action" type="button" data-check-all="4-attachment">全选</button>
+                </div>
+                <label class="add-row">
+                  <input type="checkbox" data-kind="attachment" data-change="new">
+                  <span><strong>全文 PDF（1.2 MB）</strong></span>
+                </label>
+                <label class="add-row">
+                  <input type="checkbox" data-kind="attachment" data-change="new">
+                  <span><strong>补充材料（340 KB）</strong></span>
+                </label>
+              </section>
+
+              <section class="sect">
+                <div class="sect-head">
+                  <h3 class="sect-title">新增笔记</h3>
+                  <span class="sect-meta" data-sec-meta="4-note">1 项 · 已选 0</span>
+                  <button class="sect-action" type="button" data-check-all="4-note">全选</button>
+                </div>
+                <label class="add-row">
+                  <input type="checkbox" data-kind="note" data-change="new">
+                  <span>
+                    <strong>笔记 1</strong>
+                    <details class="v-long">
+                      <summary>预览笔记</summary>
+                      <p class="add-note">作者区分了「写作辅助」与「内容生成」两类使用方式，并主张把披露义务放在投稿环节而不是写作环节。</p>
+                    </details>
+                  </span>
+                </label>
+                <p class="add-hint">只新增，不改动已有附件和笔记；请留意是否重复。</p>
+              </section>
+            </article>
+
+          </main>
+        </div>
+
+        <footer class="opt-footer">
+          <div>
+            <p class="opt-summary" data-sum-main aria-live="polite">已选择 2 个条目 · 4 项更新</p>
+            <p class="opt-break" data-sum-break>其中 4 项补全空白</p>
+          </div>
+        </footer>
+      </div>
+
+    </div>
+
+    <div class="buttonrow">
+      <button class="btn" type="button">取消</button>
+      <button class="btn btn-primary" type="button" id="confirm-btn">更新所选内容</button>
+    </div>
+  </div>
+
+  <ol class="changes">
+    <li><b>侧栏</b>：原生 <code>select</code> 只能显示「标题 · 状态」一行字 → 行列表带状态点、每条的「已选 n / m 项」，顶部加筛选。对应 <code>src/modules/metadataNavigation.ts</code>、<code>batchConfirmDialog.ts</code> 的侧栏。</li>
+    <li><b>对比表</b>：四列收敛为「勾选 · 项目 · 现有内容 · 新内容」；替换片段高亮、表头吸顶、整行可点。去掉「新增 / 替换」徽标——现有内容一栏是 <code>—</code> 还是真实值，本身就说清了是补全还是覆盖，少一个元素不丢信息。选中行不再整行铺灰，只靠勾选框与字段名加粗。</li>
+    <li><b>分区头</b>：现有样式把字段分区标题 <code>display: none</code> 掉了；这里也不再另起一行标题——表头已经标了列名，计数并进来源行「已选 3 / 5 项」，作者名单作为同一张表的最后一行（<code>整组</code> 小注保留「整组选择」的语义）。</li>
+    <li><b>身份确认</b>：确认后卡片收起成一行，把垂直空间还给内容；待确认时用卡片而不是左边框提示条。</li>
+    <li><b>标题不重复</b>：窗口标题已是「确认条目信息更新」，内容区改为信息性标题「4 个条目 · 3 个可更新」。</li>
+    <li><b>页脚</b>：摘要拆出「补全空白 / 替换已有内容」，帮助句上移到页头（先说规则，再让人操作）。</li>
+    <li><b>现代排版（批注 2）</b>：结构线从 <code>ButtonBorder</code> 硬线换成低对比发丝线，字号阶、行高、留白重排。仍然只用系统色与原生控件，不引入品牌色。</li>
+    <li><b>筛选行（批注 1）</b>：去掉四个 chip 的描边，只留选中态填充，计数降到次要层级。</li>
+    <li><b>勾选列（批注 3）</b>：左侧勾选列加内缩、行高从 11px 提到 12px，不再贴内容区边缘。</li>
+  </ol>
+
+</div>
+
+<div class="anno-list" id="anno-list" hidden></div>
+<div class="anno-bar" id="anno-bar" hidden>
+  <span class="anno-bar-text"><b id="anno-bar-count">0</b> 条批注<span class="anno-flash" id="anno-flash"></span></span>
+  <button class="anno-mini" type="button" id="anno-list-btn">列出</button>
+  <button class="anno-mini" type="button" id="anno-copy">复制全部</button>
+  <button class="anno-mini anno-mini-danger" type="button" id="anno-clear">清空</button>
+  <button class="anno-mini" type="button" id="anno-done">退出批注</button>
+</div>
+
+<script>
+  (function () {
+    "use strict";
+
+    var $ = function (sel, root) { return (root || document).querySelector(sel); };
+    var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+    /* ── 预览控制：视图与外观 ── */
+    $$(".seg-btn[data-mode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        $$(".seg-btn[data-mode]").forEach(function (b) { b.classList.toggle("is-on", b === btn); });
+        $$(".view").forEach(function (v) { v.hidden = v.getAttribute("data-view") !== btn.getAttribute("data-mode"); });
+      });
+    });
+
+    $$(".seg-btn[data-theme-btn]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.documentElement.setAttribute("data-theme", btn.getAttribute("data-theme-btn"));
+        $$(".seg-btn[data-theme-btn]").forEach(function (b) { b.classList.toggle("is-on", b === btn); });
+      });
+    });
+
+    /* ── 侧栏：切换条目 ── */
+    $$(".nav-row").forEach(function (row) {
+      row.addEventListener("click", function () {
+        $$(".nav-row").forEach(function (r) { r.classList.toggle("is-on", r === row); });
+        var id = row.getAttribute("data-item");
+        $$(".item-detail").forEach(function (d) { d.hidden = d.getAttribute("data-item") !== id; });
+        var pane = $(".opt-detail-pane");
+        if (pane) { pane.scrollTop = 0; }
+      });
+    });
+
+    /* ── 侧栏：筛选 ── */
+    $$(".chip").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        $$(".chip").forEach(function (c) { c.classList.toggle("is-on", c === chip); });
+        var f = chip.getAttribute("data-filter");
+        $$(".nav-row").forEach(function (row) {
+          var state = row.getAttribute("data-state");
+          var isIdentity = row.getAttribute("data-identity") === "1";
+          var show = f === "all"
+            || (f === "ready" && state === "ready")
+            || (f === "identity" && isIdentity)
+            || (f === "blocked" && state === "blocked");
+          row.hidden = !show;
+        });
+      });
+    });
+
+    /* ── 整行点击即勾选 ── */
+    $$(".diff tbody tr").forEach(function (tr) {
+      tr.addEventListener("click", function (event) {
+        if (event.target.closest("input, label, summary, a")) { return; }
+        var box = tr.querySelector('input[type="checkbox"]');
+        if (!box) { return; }
+        box.checked = !box.checked;
+        recount();
+      });
+    });
+
+    /* ── 身份确认：确认后卡片收起，并计入汇总 ── */
+    $$("[data-identity-check]").forEach(function (box) {
+      box.addEventListener("change", function () {
+        var card = box.closest(".identity");
+        if (card) { card.classList.toggle("is-confirmed", box.checked); }
+        recount();
+      });
+    });
+
+    /* ── 分区全选 ── */
+    $$("[data-check-all]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = btn.getAttribute("data-check-all").split("-");
+        var detail = $('.item-detail[data-item="' + parts[0] + '"]');
+        if (!detail) { return; }
+        var kind = parts[1];
+        var scope = $$('input[data-kind="' + kind + '"]', detail);
+        if (kind === "field") { scope = scope.filter(function (b) { return b.getAttribute("data-change") === "new"; }); }
+        scope.forEach(function (b) { b.checked = true; });
+        recount();
+      });
+    });
+
+    /* ── 页头批量：补全所有空白 ── */
+    var fillAll = $("#fill-all");
+    if (fillAll) {
+      fillAll.addEventListener("click", function () {
+        $$('input[data-kind="field"][data-change="new"]').forEach(function (b) { b.checked = true; });
+        recount();
+      });
+    }
+
+    /* ── 汇总：侧栏计数、分区计数、页脚摘要、主按钮可用性 ── */
+    function recount() {
+      var totalItems = 0;
+      var totalOps = 0;
+      var totalNew = 0;
+      var totalReplace = 0;
+
+      $$(".item-detail").forEach(function (detail) {
+        var id = detail.getAttribute("data-item");
+        var card = detail.querySelector(".identity");
+        var pendingIdentity = !!card && !card.classList.contains("is-confirmed");
+
+        ["field", "attachment", "note"].forEach(function (kind) {
+          var meta = detail.querySelector('[data-sec-meta="' + id + "-" + kind + '"]');
+          if (!meta) { return; }
+          var boxes = $$('input[data-kind="' + kind + '"]', detail);
+          var on = boxes.filter(function (b) { return b.checked; }).length;
+          meta.textContent = kind === "field"
+            ? "已选 " + on + " / " + boxes.length + " 项"
+            : boxes.length + " 项 · 已选 " + on;
+        });
+
+        var all = $$("input[data-kind]", detail);
+        var navMeta = detail.parentNode ? null : null;
+        var nav = document.querySelector('[data-nav-meta="' + id + '"]');
+        var onAll = all.filter(function (b) { return b.checked; });
+
+        if (nav) {
+          if (pendingIdentity) {
+            nav.textContent = "待确认身份";
+          } else if (!all.length) {
+            nav.textContent = detail.querySelector(".state-block") ? "无法更新 · 未找到匹配" : "没有需要更新的内容";
+          } else {
+            nav.textContent = "已选 " + onAll.length + " / " + all.length + " 项";
+          }
+        }
+
+        $$(".diff tbody tr", detail).forEach(function (tr) {
+          var box = tr.querySelector('input[type="checkbox"]');
+          if (box) { tr.classList.toggle("is-on", box.checked); }
+        });
+
+        if (pendingIdentity || !onAll.length) { return; }
+        totalItems += 1;
+        totalOps += onAll.length;
+        onAll.forEach(function (b) {
+          if (b.getAttribute("data-change") === "new") { totalNew += 1; }
+          else { totalReplace += 1; }
+        });
+      });
+
+      var main = $("[data-sum-main]");
+      if (main) { main.textContent = "已选择 " + totalItems + " 个条目 · " + totalOps + " 项更新"; }
+
+      var brk = $("[data-sum-break]");
+      if (brk) {
+        if (totalOps === 0) {
+          brk.textContent = "还没有勾选任何内容";
+        } else if (totalReplace === 0) {
+          brk.textContent = "其中 " + totalNew + " 项补全空白";
+        } else if (totalNew === 0) {
+          brk.textContent = "其中 " + totalReplace + " 项替换已有内容";
+        } else {
+          brk.textContent = "其中 " + totalNew + " 项补全空白、" + totalReplace + " 项替换已有内容";
+        }
+      }
+
+      var confirm = $("#confirm-btn");
+      if (confirm) { confirm.disabled = totalItems === 0; }
+    }
+
+    recount();
+  })();
+</script>
+
+<script>
+  /* 批注模式：点击任意元素落点 → 写批注 → 存在 localStorage → 一键复制成文本。
+     锚点用「元素选择器 + 元素内相对位置」，所以滚动、切视图、缩放后 pin 仍跟着走。 */
+  (function () {
+    "use strict";
+    var KEY = "zmta.review.notes.v1";
+    var TOOL = ".anno-pin, .anno-popover, .anno-bar, .anno-list, .stage-bar";
+    var $ = function (s, r) { return (r || document).querySelector(s); };
+    var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+    var annos = [];
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          annos = parsed.filter(function (a) { return a && typeof a.text === "string" && a.path; });
+        }
+      }
+    } catch (e) { annos = []; }
+
+    var annotating = false;
+    var hoverEl = null;
+    var popover = null;
+    var rafPending = false;
+    var flashTimer = null;
+
+    function save() {
+      try { localStorage.setItem(KEY, JSON.stringify(annos)); } catch (e) { /* 存不下就不存，页面照常可用 */ }
+    }
+
+    function viewLabel(v) { return v === "current" ? "现状" : (v === "optimized" ? "优化后" : "页面"); }
+
+    function currentView() {
+      var shown = $$(".view").filter(function (v) { return !v.hidden; })[0];
+      return shown ? shown.getAttribute("data-view") : "";
+    }
+
+    function cssPath(el) {
+      var parts = [];
+      var node = el;
+      while (node && node.nodeType === 1) {
+        var part = node.tagName.toLowerCase();
+        var parent = node.parentElement;
+        if (parent) {
+          var same = Array.prototype.filter.call(parent.children, function (c) { return c.tagName === node.tagName; });
+          if (same.length > 1) { part += ":nth-of-type(" + (same.indexOf(node) + 1) + ")"; }
+        }
+        parts.unshift(part);
+        if (node === document.body) { break; }
+        node = parent;
+      }
+      return parts.join(" > ");
+    }
+
+    function snippetOf(el) {
+      return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 64);
+    }
+
+    function labelOf(el) {
+      var node = el;
+      while (node && node !== document.body) {
+        if (node.getAttribute && node.getAttribute("data-screen-label")) {
+          return node.getAttribute("data-screen-label");
+        }
+        node = node.parentElement;
+      }
+      return "";
+    }
+
+    /* 回传给人看时，「优化后 · 未填写」定位不到行，得补上字段名或分区名 */
+    function contextOf(el) {
+      var parts = [];
+      var screen = labelOf(el);
+      if (screen) { parts.push(screen); }
+      var tr = el.closest ? el.closest("tr") : null;
+      if (tr) {
+        var field = tr.querySelector(".f-name");
+        if (field) { parts.push(field.textContent.trim()); }
+      } else {
+        var sect = el.closest ? el.closest(".sect") : null;
+        if (sect) {
+          var title = sect.querySelector(".sect-title");
+          if (title) { parts.push(title.textContent.trim()); }
+        }
+      }
+      return parts.join(" · ");
+    }
+
+    function layoutPins() {
+      $$(".anno-pin").forEach(function (pin) {
+        var id = pin.getAttribute("data-id");
+        var anno = annos.filter(function (a) { return a.id === id; })[0];
+        var el = anno ? document.querySelector(anno.path) : null;
+        var r = el ? el.getBoundingClientRect() : null;
+        /* 目标被隐藏（切视图 / 切条目）时 rect 归零，pin 跟着收起来 */
+        var hide = !r || (!r.width && !r.height);
+        if (pin.hidden !== hide) { pin.hidden = hide; }
+        if (hide) { return; }
+        pin.style.left = (r.left + r.width * anno.fx) + "px";
+        pin.style.top = (r.top + r.height * anno.fy) + "px";
+      });
+    }
+
+    function scheduleLayout() {
+      if (rafPending) { return; }
+      rafPending = true;
+      requestAnimationFrame(function () { rafPending = false; layoutPins(); });
+    }
+
+    function flash(msg) {
+      var el = $("#anno-flash");
+      if (!el) { return; }
+      el.textContent = msg;
+      if (flashTimer) { clearTimeout(flashTimer); }
+      flashTimer = setTimeout(function () { el.textContent = ""; }, 2200);
+    }
+
+    function render() {
+      $$(".anno-pin").forEach(function (p) { p.remove(); });
+      annos.forEach(function (a, i) {
+        var pin = document.createElement("button");
+        pin.type = "button";
+        pin.className = "anno-pin";
+        pin.setAttribute("data-id", a.id);
+        pin.textContent = String(i + 1);
+        pin.title = a.text;
+        pin.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openEditor(a, pin);
+        });
+        document.body.appendChild(pin);
+      });
+      layoutPins();
+      var count = $("#anno-count");
+      if (count) { count.textContent = String(annos.length); }
+      renderBar();
+      renderList();
+    }
+
+    function renderBar() {
+      var bar = $("#anno-bar");
+      if (!bar) { return; }
+      var show = annotating || annos.length > 0;
+      bar.hidden = !show;
+      document.body.classList.toggle("has-anno-bar", show);
+      document.body.classList.toggle("is-annotating", annotating);
+      var toggle = $("#anno-toggle");
+      if (toggle) {
+        toggle.classList.toggle("is-on", annotating);
+        toggle.setAttribute("aria-pressed", String(annotating));
+      }
+      var c = $("#anno-bar-count");
+      if (c) { c.textContent = String(annos.length); }
+      if (!show) { var list = $("#anno-list"); if (list) { list.hidden = true; } }
+    }
+
+    function miniButton(label, onClick, danger) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "anno-mini" + (danger ? " anno-mini-danger" : "");
+      b.textContent = label;
+      b.addEventListener("click", onClick);
+      return b;
+    }
+
+    function locate(a) {
+      var el = document.querySelector(a.path);
+      if (!el) { flash("原元素已不存在"); return; }
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("anno-flash-target");
+      setTimeout(function () { el.classList.remove("anno-flash-target"); }, 1400);
+    }
+
+    function removeAnno(a) {
+      annos = annos.filter(function (x) { return x.id !== a.id; });
+      save();
+      render();
+    }
+
+    function renderList() {
+      var list = $("#anno-list");
+      if (!list) { return; }
+      list.textContent = "";
+      if (!annos.length) {
+        var empty = document.createElement("p");
+        empty.className = "anno-empty";
+        empty.textContent = "还没有批注。打开批注模式后，点击页面上的任意元素即可落点。";
+        list.appendChild(empty);
+        return;
+      }
+      annos.forEach(function (a, i) {
+        var row = document.createElement("div");
+        row.className = "anno-item";
+
+        var n = document.createElement("span");
+        n.className = "anno-item-n";
+        n.textContent = String(i + 1);
+
+        var body = document.createElement("div");
+        var text = document.createElement("p");
+        text.className = "anno-item-text";
+        text.textContent = a.text;
+        var meta = document.createElement("p");
+        meta.className = "anno-item-meta";
+        var where = a.context || a.label || "";
+        meta.textContent = viewLabel(a.view)
+          + (where ? " · " + where : "")
+          + (a.snippet ? " · 「" + a.snippet + "」" : "");
+        body.appendChild(text);
+        body.appendChild(meta);
+
+        var actions = document.createElement("div");
+        actions.className = "anno-item-actions";
+        actions.appendChild(miniButton("定位", function () { locate(a); }));
+        actions.appendChild(miniButton("编辑", function () { openEditor(a, null); }));
+        actions.appendChild(miniButton("删除", function () { removeAnno(a); }, true));
+
+        row.appendChild(n);
+        row.appendChild(body);
+        row.appendChild(actions);
+        list.appendChild(row);
+      });
+    }
+
+    function startNew(el, clientX, clientY) {
+      var r = el.getBoundingClientRect();
+      buildPopover(null, {
+        path: cssPath(el),
+        fx: r.width ? (clientX - r.left) / r.width : 0.5,
+        fy: r.height ? (clientY - r.top) / r.height : 0.5,
+        snippet: snippetOf(el),
+        label: labelOf(el),
+        context: contextOf(el),
+        view: currentView(),
+      }, clientX, clientY);
+    }
+
+    function openEditor(anno, pinEl) {
+      var r = pinEl ? pinEl.getBoundingClientRect() : null;
+      buildPopover(anno, null,
+        r ? r.left : window.innerWidth / 2,
+        r ? r.top : window.innerHeight / 2);
+    }
+
+    function closePopover() {
+      if (popover) { popover.remove(); popover = null; }
+    }
+
+    function buildPopover(anno, anchor, x, y) {
+      closePopover();
+      var pop = document.createElement("div");
+      pop.className = "anno-popover";
+
+      var head = document.createElement("p");
+      head.className = "anno-target";
+      var where = anno
+        ? (anno.context || anno.label || "") + (anno.snippet ? " · " + anno.snippet : "")
+        : (anchor.context || anchor.label || "") + (anchor.snippet ? " · " + anchor.snippet : "");
+      head.textContent = where || "页面";
+      head.title = where;
+
+      var ta = document.createElement("textarea");
+      ta.value = anno ? anno.text : "";
+      ta.placeholder = "写下这条批注…";
+
+      var actions = document.createElement("div");
+      actions.className = "anno-popover-actions";
+
+      var saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "anno-mini anno-mini-primary";
+      saveBtn.textContent = "保存";
+
+      var cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "anno-mini";
+      cancelBtn.textContent = "取消";
+
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+
+      if (anno) {
+        var spacer = document.createElement("span");
+        spacer.className = "anno-spacer";
+        actions.appendChild(spacer);
+        var del = document.createElement("button");
+        del.type = "button";
+        del.className = "anno-mini anno-mini-danger";
+        del.textContent = "删除";
+        del.addEventListener("click", function () { closePopover(); removeAnno(anno); });
+        actions.appendChild(del);
+      }
+
+      var hint = document.createElement("p");
+      hint.className = "anno-hint";
+      hint.textContent = "⌘Enter 保存 · Esc 取消";
+
+      pop.appendChild(head);
+      pop.appendChild(ta);
+      pop.appendChild(actions);
+      pop.appendChild(hint);
+      document.body.appendChild(pop);
+      popover = pop;
+
+      function commit() {
+        var text = ta.value.trim();
+        if (!text) { closePopover(); return; }
+        var isNew = !anno;
+        if (anno) {
+          anno.text = text;
+        } else {
+          annos.push({
+            id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            text: text,
+            path: anchor.path,
+            fx: anchor.fx,
+            fy: anchor.fy,
+            snippet: anchor.snippet,
+            label: anchor.label,
+            context: anchor.context,
+            view: anchor.view,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        save();
+        closePopover();
+        render();
+        flash(isNew ? "已添加批注" : "已更新");
+      }
+
+      saveBtn.addEventListener("click", commit);
+      cancelBtn.addEventListener("click", closePopover);
+      ta.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closePopover(); }
+        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); commit(); }
+      });
+
+      var pw = pop.offsetWidth || 276;
+      var ph = pop.offsetHeight || 170;
+      pop.style.left = Math.min(Math.max(8, x + 14), Math.max(8, window.innerWidth - pw - 8)) + "px";
+      pop.style.top = Math.min(Math.max(8, y - 24), Math.max(8, window.innerHeight - ph - 8)) + "px";
+
+      setTimeout(function () { ta.focus(); }, 0);
+    }
+
+    function clearHover() {
+      if (hoverEl) { hoverEl.classList.remove("anno-hover"); hoverEl = null; }
+    }
+
+    function setAnnotating(on) {
+      annotating = on;
+      clearHover();
+      if (!on) { closePopover(); }
+      renderBar();
+      if (on) { flash("点击页面任意元素添加批注"); }
+    }
+
+    function toMarkdown() {
+      return annos.map(function (a, i) {
+        var where = a.context || a.label || "";
+        var head = (i + 1) + ". 【" + viewLabel(a.view) + "】"
+          + (where ? where + " · " : "")
+          + (a.snippet ? "「" + a.snippet + "」" : "");
+        return head + "\n   " + a.text.replace(/\n/g, "\n   ");
+      }).join("\n\n");
+    }
+
+    function copyAll() {
+      if (!annos.length) { flash("还没有批注"); return; }
+      var text = toMarkdown();
+      var done = function () { flash("已复制 " + annos.length + " 条"); };
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+        ta.remove();
+        flash(ok ? "已复制 " + annos.length + " 条" : "复制失败，请用「列出」手动选中");
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    }
+
+    /* 批注模式下的点击由这里接管，设计稿自身的交互不触发 */
+    document.addEventListener("mousedown", function (ev) {
+      if (!annotating) { return; }
+      var t = ev.target;
+      if (!t || !t.closest || t.closest(TOOL)) { return; }
+      ev.preventDefault();
+    }, true);
+
+    document.addEventListener("click", function (ev) {
+      if (!annotating) { return; }
+      var t = ev.target;
+      if (!t || !t.closest || t.closest(TOOL)) { return; }
+      if (t === document.documentElement || t === document.body) { return; }
+      ev.preventDefault();
+      ev.stopPropagation();
+      startNew(t, ev.clientX, ev.clientY);
+    }, true);
+
+    document.addEventListener("mouseover", function (ev) {
+      if (!annotating) { return; }
+      var t = ev.target;
+      if (!t || !t.classList) { return; }
+      if ((t.closest && t.closest(TOOL)) || t === document.documentElement || t === document.body) {
+        clearHover();
+        return;
+      }
+      if (hoverEl === t) { return; }
+      clearHover();
+      hoverEl = t;
+      hoverEl.classList.add("anno-hover");
+    }, true);
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Escape") { return; }
+      if (popover) { closePopover(); }
+      else if (annotating) { setAnnotating(false); }
+    });
+
+    /* 滚动、缩放、切视图后重新对位 */
+    window.addEventListener("scroll", scheduleLayout, true);
+    window.addEventListener("resize", scheduleLayout);
+
+    /* 切视图、切条目只会改 hidden，不会触发 scroll/resize，得单独盯 */
+    try {
+      new MutationObserver(scheduleLayout).observe(document.body, {
+        attributes: true, attributeFilter: ["hidden"], subtree: true,
+      });
+    } catch (e) { /* 老引擎不支持就退化成只在滚动时对位 */ }
+    document.addEventListener("click", function (ev) {
+      if (ev.target && ev.target.closest && ev.target.closest(".stage-bar")) {
+        setTimeout(layoutPins, 0);
+        setTimeout(layoutPins, 140);
+      }
+    });
+
+    var toggle = $("#anno-toggle");
+    if (toggle) { toggle.addEventListener("click", function () { setAnnotating(!annotating); }); }
+    var doneBtn = $("#anno-done");
+    if (doneBtn) { doneBtn.addEventListener("click", function () { setAnnotating(false); }); }
+    var copyBtn = $("#anno-copy");
+    if (copyBtn) { copyBtn.addEventListener("click", copyAll); }
+    var clearBtn = $("#anno-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        if (!annos.length) { return; }
+        if (!window.confirm("清空全部 " + annos.length + " 条批注？")) { return; }
+        annos = [];
+        save();
+        render();
+        flash("已清空");
+      });
+    }
+    var listBtn = $("#anno-list-btn");
+    if (listBtn) {
+      listBtn.addEventListener("click", function () {
+        var list = $("#anno-list");
+        if (!list) { return; }
+        list.hidden = !list.hidden;
+        if (!list.hidden) { renderList(); }
+      });
+    }
+
+    render();
+  })();
+</script>
+</body>
+</html>

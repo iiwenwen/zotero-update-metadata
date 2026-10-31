@@ -20,6 +20,22 @@ describe("交付数据安全回归（审计S1/S2/S3，纯内存）", function ()
   }
   const field = (name, before, after) => ({ kind: "field-set", operationId: `field:${name}`, field: name, before, after });
 
+  it("混合批次只读条目在预检阶段跳过，不调用来源", async function () {
+    const calls = [];
+    const makeItem = (id, editable) => ({
+      id, key: `KEY${id}`, libraryID: 1, itemType: "book",
+      isRegularItem: () => true, isEditable: () => editable,
+      getField: (field) => field === "title" ? `Item ${id}` : field === "url" ? `https://example.test/${id}` : "",
+    });
+    const resolver = { resolve: async ({ item }) => {
+      calls.push(item.itemID); return { candidate: null, attempts: [], terminalOutcome: "not-applicable" };
+    } };
+    const result = await api.preflightBatch([makeItem(1, true), makeItem(2, false)], { resolver });
+    expect(calls).to.deep.equal([1]);
+    expect(result[1].status).to.equal("skipped");
+    expect(result[1].message).to.include("只读");
+  });
+
   it("S1a：其他字段失败日志等待期间的人工作品在最终写前复核被保留", async function () {
     const fake = port({ title: "old", publisher: "manual" });
     const result = await new api.ChangeExecutor(fake, async (event) => {
@@ -38,7 +54,7 @@ describe("交付数据安全回归（审计S1/S2/S3，纯内存）", function ()
     }).execute(plan([field("title", "old", "incoming")]));
     expect(fake.item.fields.title).to.equal("human-after");
     expect(fake.saves).to.equal(1);
-    expect(result.items[0].operations[0].message).to.include("compensation-failed");
+    expect(result.items[0].operations[0].recoveryRequired).to.equal(true);
   });
   it("S1同源：Creator日志失败补偿同样保留人工后改名单", async function () {
     const fake = port();
@@ -47,7 +63,7 @@ describe("交付数据安全回归（审计S1/S2/S3，纯内存）", function ()
       if (event.status === "applied") { fake.item.creators = [{ creatorType: "author", name: "Human" }]; throw new Error("journal unavailable"); }
     }).execute(plan([{ kind: "creators-set", operationId: "creators:list", before, after: [{ creatorType: "author", name: "Incoming" }] }]));
     expect(fake.item.creators[0].name).to.equal("Human");
-    expect(result.items[0].operations[0].message).to.include("compensation-failed");
+    expect(result.items[0].operations[0].recoveryRequired).to.equal(true);
   });
   function child(kind = "note") {
     return {

@@ -114,6 +114,8 @@ export interface AttemptEvidence {
   readonly outcome: AttemptOutcome;
   readonly candidateDigest?: string;
   readonly errorCode?: string;
+  /** 本次路线是否因临时故障结束，供审核页判定手动恢复；不进入写入记录。 */
+  readonly retryable?: boolean;
   /** 仅保留本次预检所需的安全诊断，不进入 applied journal。 */
   readonly diagnostic?: AttemptDiagnostic;
 }

@@ -161,7 +161,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
       operationId: "field:title",
       kind: "field-set",
       status: "failed",
-      message: "审核后本地字段已变化，未覆盖",
+      message: "此字段在审核后已被修改。本次未覆盖。",
     });
     expect(result.items[0].status).to.equal("partial");
     expect(events.find((event) => event.operation.operationId === "field:title" && event.status === "failed")).to.exist;
@@ -213,7 +213,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     ]));
     expect(normalPort.item.fields).to.include({ title: "旧标题", publisher: "旧出版社" });
     expect(normalPort.saves).to.equal(2);
-    expect(compensated.items[0].operations[0].message).to.include("已恢复审核前字段值");
+    expect(compensated.items[0].operations[0].message).to.include("已恢复更新前的内容");
 
     const severePort = fakePort({ saveErrorAt: 2 });
     const severeEvents = [];
@@ -224,7 +224,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
       { kind: "field-set", operationId: "field:title", field: "title", before: "旧标题", after: "新标题" },
       { kind: "field-set", operationId: "field:publisher", field: "publisher", before: "旧出版社", after: "新出版社" },
     ]));
-    expect(severe.items[0].operations[0].message).to.include("[compensation-failed]");
+    expect(severe.items[0].operations[0].recoveryRequired).to.equal(true);
     expect(severeEvents.find((event) => event.status === "failed")?.actualAfter).to.equal("新标题");
   });
 
@@ -285,7 +285,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
 
     expect(port.calls.filter((call) => call[0] === "setCreators")).to.have.length(0);
     expect(port.item.fields.title).to.equal("新标题");
-    expect(result.items[0].operations[0].message).to.equal("审核后本地 Creator 列表已变化，未覆盖");
+    expect(result.items[0].operations[0].message).to.equal("作者与贡献者名单在审核后已被修改。本次未覆盖。");
     expect(result.items[0].status).to.equal("partial");
   });
 
@@ -298,7 +298,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     ]));
     expect(saveFailedPort.item.creators).to.deep.equal(before);
     expect(saveFailedPort.saves).to.equal(1);
-    expect(saveFailed.items[0].operations[0].message).to.include("写入失败");
+    expect(saveFailed.items[0].operations[0].message).to.include("无法保存此项内容");
 
     const journalFailedPort = fakePort({ creators: before });
     const journalFailed = await new api.ChangeExecutor(journalFailedPort, async (event) => {
@@ -308,7 +308,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     ]));
     expect(journalFailedPort.item.creators).to.deep.equal(before);
     expect(journalFailedPort.saves).to.equal(2);
-    expect(journalFailed.items[0].operations[0].message).to.include("已恢复审核前 Creator 列表");
+    expect(journalFailed.items[0].operations[0].message).to.include("已恢复更新前的内容");
 
     const rereadFailedPort = fakePort({ creators: before, getCreatorsErrorAt: 2 });
     const rereadFailed = await new api.ChangeExecutor(rereadFailedPort).execute(plan([
@@ -316,8 +316,8 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     ]));
     expect(rereadFailedPort.item.creators).to.deep.equal(after);
     expect(rereadFailedPort.saves).to.equal(1);
-    expect(rereadFailed.items[0].operations[0].message).to.include("保存后重读失败");
-    expect(rereadFailed.items[0].operations[0].message).to.include("compensation-failed");
+    expect(rereadFailed.items[0].operations[0].message).to.include("此项更新的实际结果需人工核对");
+    expect(rereadFailed.items[0].operations[0].recoveryRequired).to.equal(true);
   });
 
   it("Creator 补偿失败标记严重错误；同一条目拒绝两个 Creator 操作", async function () {
@@ -329,7 +329,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     }).execute(plan([
       { kind: "creators-set", operationId: "creators:1", before, after },
     ]));
-    expect(severe.items[0].operations[0].message).to.include("[compensation-failed]");
+    expect(severe.items[0].operations[0].recoveryRequired).to.equal(true);
 
     let thrown;
     try {
@@ -341,7 +341,7 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
       thrown = error;
     }
     expect(thrown?.code).to.equal("invalid-plan");
-    expect(thrown?.message).to.include("只能包含一个 Creator");
+    expect(thrown?.message).to.include("不能重复更新作者与贡献者");
   });
 
   it("附件与 Note 只创建；applied 日志失败时回收新建子项，回收失败标记严重错误", async function () {
@@ -362,11 +362,13 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
     expect(result.items[0].operations.map((entry) => entry.status)).to.deep.equal(["failed", "applied"]);
 
     const severePort = fakePort({ trashError: new Error("trash failed") });
+    const severeEvents = [];
     const severe = await new api.ChangeExecutor(severePort, async (event) => {
+      severeEvents.push(event);
       if (event.status === "applied") throw new Error("journal failed");
     }).execute(plan([{ kind: "note-create", operationId: "note:1:0", content: "新增 Note" }]));
-    expect(severe.items[0].operations[0].message).to.include("[compensation-failed]");
-    expect(severe.items[0].operations[0].message).to.include("NOTE1");
+    expect(severe.items[0].operations[0].recoveryRequired).to.equal(true);
+    expect(severeEvents.find(event => event.status === "failed").createdItemKey).to.equal("NOTE1");
   });
 
   it("条目缺失时当前条目失败，但不阻断计划中的后续条目", async function () {
@@ -411,6 +413,6 @@ describe("ChangeExecutor（fake Port，不写真实 Zotero 库）", function () 
       thrown = error;
     }
     expect(thrown?.code).to.equal("invalid-plan");
-    expect(thrown?.message).to.include("来源证据");
+    expect(thrown?.message).to.include("缺少有效来源");
   });
 });

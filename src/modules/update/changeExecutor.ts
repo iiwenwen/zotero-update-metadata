@@ -1,3 +1,4 @@
+import { localized } from "../../utils/locale";
 import {
   ChangeExecutionError,
   isChangeOperation,
@@ -44,11 +45,11 @@ function itemStatus(operations: readonly ChangeOperationResult[]): ItemChangeRes
 
 function assertValidPlan(plan: ChangePlan): void {
   if (!plan || typeof plan !== "object" || typeof plan.planId !== "string" || !Array.isArray(plan.items)) {
-    throw new ChangeExecutionError("invalid-plan", "ChangePlan 结构无效");
+    throw new ChangeExecutionError("invalid-plan", localized("更新计划无效，未执行", "The update plan is invalid and was not run."));
   }
   for (const itemPlan of plan.items) {
     if (!itemPlan?.item || !Array.isArray(itemPlan.operations) || !Array.isArray(itemPlan.evidence)) {
-      throw new ChangeExecutionError("invalid-plan", "ChangePlan 条目结构无效");
+      throw new ChangeExecutionError("invalid-plan", localized("条目的更新计划无效，未执行", "The item update plan is invalid and was not run."));
     }
     if (itemPlan.operations.length > 0 && (
       itemPlan.evidence.length === 0
@@ -69,25 +70,25 @@ function assertValidPlan(plan: ChangePlan): void {
           || identifier.value.length === 0)
       )
     )) {
-      throw new ChangeExecutionError("invalid-plan", `条目缺少有效来源证据：${itemPlan.item.itemKey}`);
+      throw new ChangeExecutionError("invalid-plan", localized(`条目缺少有效来源，未执行更新：${itemPlan.item.itemKey}`, `The item has no verified source. Nothing was updated: ${itemPlan.item.itemKey}`));
     }
     const operationIds = new Set<string>();
     let creatorsOperationCount = 0;
     for (const operation of itemPlan.operations) {
       if (!isChangeOperation(operation)) {
-        throw new ChangeExecutionError("invalid-plan", "ChangePlan 包含未知操作");
+        throw new ChangeExecutionError("invalid-plan", localized("更新计划包含无法识别的操作，未执行", "The update plan contains an unknown operation and was not run."));
       }
       if (operationIds.has(operation.operationId)) {
         throw new ChangeExecutionError(
           "invalid-plan",
-          `同一条目存在重复 operationId：${operation.operationId}`,
+          localized(`更新计划存在重复操作，未执行：${operation.operationId}`, `The update plan contains a duplicate operation and was not run: ${operation.operationId}`),
           operation.operationId,
         );
       }
       if (operation.kind === "creators-set" && ++creatorsOperationCount > 1) {
         throw new ChangeExecutionError(
           "invalid-plan",
-          `同一条目只能包含一个 Creator 列表操作：${itemPlan.item.itemKey}`,
+          localized(`同一条目不能重复更新作者与贡献者：${itemPlan.item.itemKey}`, `The authors and contributors cannot be updated twice for the same item: ${itemPlan.item.itemKey}`),
           operation.operationId,
         );
       }
@@ -140,7 +141,7 @@ export class ChangeExecutor<TItem = unknown, TCreatedItem = unknown> {
       if (!item) {
         throw new ChangeExecutionError(
           "item-not-found",
-          `找不到条目：${itemPlan.item.itemKey}`,
+          localized(`找不到条目：${itemPlan.item.itemKey}`, `The item could not be found: ${itemPlan.item.itemKey}`),
         );
       }
     } catch (error) {

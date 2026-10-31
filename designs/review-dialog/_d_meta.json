@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Review Dialog": {
+      "versions": [
+        {
+          "path": "Review Dialog.html",
+          "createdAt": "2026-10-30T14:27:17.735Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-30T14:27:17.735Z",
+  "updatedAt": "2026-10-30T14:27:17.735Z"
+}

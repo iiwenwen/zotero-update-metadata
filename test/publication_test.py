@@ -53,6 +53,25 @@ class PublicationBoundary(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('historical-private-workspace-path', result.stdout)
 
+    def test_pr_checks_source_head_without_relaxing_commit_email_guard(self):
+        self.commit('README.md', 'public base')
+        self.git('checkout', '-qb', 'feature')
+        self.commit('feature.txt', 'public change')
+        head = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'main')
+        self.git('config', 'user.email', 'synthetic-merge@example.org')
+        self.git('merge', '--no-ff', '-qm', 'temporary integration commit', 'feature')
+        self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'HEAD').split()), 3)
+        self.assertEqual(self.scan(head).returncode, 0)
+        result = self.scan('HEAD')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('non-GitHub-private-email', result.stdout)
+
+        workflow = (CHECK.parent.parent / '.github/workflows/ci.yml').read_text()
+        self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', workflow)
+        self.assertIn('fetch-depth: 0', workflow)
+        self.assertIn('persist-credentials: false', workflow)
+
     def test_personal_paths_and_tokens_are_reported_without_values(self):
         secret = 'ghp_' + 'a' * 36
         personal = '/home/' + 'private-person/project'

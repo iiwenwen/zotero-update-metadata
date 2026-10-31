@@ -1,4 +1,5 @@
 import { diffFields, fetchFromTranslator, getItemURL } from "./metadataSource";
+import { localized } from "../utils/locale";
 import {
   BatchPreflightCancelledError,
   MAX_BATCH_ITEMS,
@@ -95,11 +96,13 @@ export interface BatchApplyDependencies {
   onOperationStatus?: (event: BatchOperationEvent) => Promise<void> | void;
   port?: ZoteroMutationPort<any, any>;
   batchId?: string;
+  onItemComplete?: (result: BatchItemResult, completed: number, total: number) => void;
 }
 
 export interface BatchRetryDependencies extends BatchApplyDependencies, BatchPreflightDependencies {
   /** retry 重新预检后、任何 planned/applied 事件前，交付本次真正进入 apply 的候选。 */
   onResolvedSelections?: (selections: readonly BatchItemSelection[]) => Promise<void> | void;
+  review?: (previews: BatchItemPreview[]) => Promise<BatchItemSelection[] | null>;
 }
 
 export class BatchLimitError extends Error {
@@ -299,6 +302,10 @@ function createDefaultWebRoute(): ResolutionRoute {
         };
       } catch (error) {
         const classified = doubanProvider.classifyError(error);
+        // 旧豆瓣Provider包装了抓取错误；保留原阶段/原因，不能统统退化成网络失败。
+        const causeDiagnostic = (classified as Error & {
+          cause?: { diagnostic?: import("./update/resolution").AttemptDiagnostic };
+        }).cause?.diagnostic;
         return {
           candidate: null,
           retryable: classified.retryable,
@@ -311,7 +318,9 @@ function createDefaultWebRoute(): ResolutionRoute {
             fetchedAt: new Date().toISOString(),
             outcome: doubanAttemptOutcome(classified),
             errorCode: classified.code,
-            diagnostic: createAttemptDiagnostic("route", classified.message, classified),
+            diagnostic: causeDiagnostic
+              ? createAttemptDiagnostic(causeDiagnostic.stage, causeDiagnostic.message, classified)
+              : createAttemptDiagnostic("route", classified.message, classified),
           },
         };
       }
@@ -328,16 +337,18 @@ function resolveBatchResolver(dependencies: BatchPreflightDependencies): DOIFall
   return createDOIFallbackResolver({
     urlWebRoute: createDefaultWebRoute(),
     doiSearchRoute: createDOISearchRoute(),
+    locale: Zotero.locale,
   });
 }
 
 function providerFailureMessage(error: unknown): string {
   if (error instanceof ProviderError) {
-    if (error.code === "source-mismatch") return "同源验证失败";
-    if (error.code === "no-result" || error.code === "translator-missing") return "Translator 未返回结果";
-    return `Translator 获取失败：${error.message}`;
+    if (error.code === "source-mismatch") return localized("来源与条目网址不一致。条目未更新。请核对来源网址。", "The source does not match the item's URL. Nothing was updated. Check the source URL.");
+    if (error.code === "translator-missing" || error.code === "unsupported") return localized("不支持此来源。条目未更新。", "This source is not supported. Nothing was updated.");
+    if (error.code === "no-result") return localized("来源未返回可用信息。条目未更新。请核对网址或 DOI。", "The source returned no usable information. Nothing was updated. Check the source URL.");
   }
-  return `Translator 获取失败：${errorMessage(error)}`;
+  Zotero.debug(`[zmta] 来源获取失败：${errorMessage(error)}`);
+  return localized("无法获取来源信息，本条目未更新。请检查网络或核对来源。", "Could not retrieve source information. Nothing was updated. Check the network and source.");
 }
 
 type ResolveForPreflight = (
@@ -364,7 +375,7 @@ async function preflightBatchWith(
   const emitStopping = (): void => {
     if (stoppingEmitted) return;
     stoppingEmitted = true;
-    emit({ stage: "stopping", message: "正在停止预检" });
+    emit({ stage: "stopping", message: localized("正在停止查找", "Stopping lookup") });
   };
   const onAbort = (): void => {
     if (!settled) emitStopping();
@@ -374,9 +385,34 @@ async function preflightBatchWith(
     emitStopping();
     if (!cancelledEmitted) {
       cancelledEmitted = true;
-      emit({ stage: "cancelled", message: "预检已取消" });
+      emit({ stage: "cancelled", message: localized("已取消查找", "Lookup cancelled") });
     }
     throw new BatchPreflightCancelledError(completed, total);
+  };
+  // 此处仅等待只读候选：取消后不再等失去响应的来源，也不让迟到结果进入审核/写入。
+  // 仍监听原Promise的成功和失败，避免后台来源稍后拒绝时产生未处理异常。
+  const awaitCandidate = <T>(pending: Promise<T>): Promise<T> => {
+    const signal = dependencies.signal;
+    if (!signal) return pending;
+    return new Promise<T>((resolve, reject) => {
+      let finished = false;
+      const finish = (settle: () => void) => {
+        if (finished) return;
+        finished = true;
+        signal.removeEventListener("abort", cancel);
+        settle();
+      };
+      const cancel = () => {
+        try { throwIfCancelled(); }
+        catch (error) { finish(() => reject(error)); }
+      };
+      signal.addEventListener("abort", cancel, { once: true });
+      Promise.resolve(pending).then(
+        value => finish(() => resolve(value)),
+        error => finish(() => reject(error)),
+      );
+      if (signal.aborted) cancel();
+    });
   };
   const completeItem = (preview: BatchItemPreview): void => {
     previews.push(preview);
@@ -409,9 +445,22 @@ async function preflightBatchWith(
         itemKey: snapshot.itemKey,
         title: snapshot.title,
       });
+      let editable = true;
+      try { if (typeof item.isEditable === "function") editable = item.isEditable() === true; }
+      catch { editable = false; }
+      if (!editable || item.deleted || item.isFeedItem === true) {
+        completeItem(emptyPreview(item, sourceURL, "skipped", localized(
+          "当前条目只读或不可用，未获取来源，也不会更新。",
+          "This item is read-only or unavailable. No source was retrieved and nothing was updated.",
+        )));
+        continue;
+      }
       if (legacyProvider) {
         if (!legacyProvider.applies(snapshot)) {
-          completeItem(emptyPreview(item, sourceURL, "skipped", "来源不适用于该条目"));
+          completeItem(emptyPreview(item, sourceURL, "skipped", localized(
+            "来源不适用于该条目，本条目未更新。",
+            "This source does not apply to this item. Nothing was updated.",
+          )));
           continue;
         }
         try {
@@ -425,7 +474,7 @@ async function preflightBatchWith(
             attempt: 1,
           });
           throwIfCancelled();
-          const candidate = await fetchProviderCandidate(legacyProvider, snapshot);
+          const candidate = await awaitCandidate(fetchProviderCandidate(legacyProvider, snapshot));
           throwIfCancelled();
           completeItem(candidateToBatchPreview(item, candidate));
         } catch (error) {
@@ -438,7 +487,7 @@ async function preflightBatchWith(
 
       const localDOI = normalizeDOI(snapshot.fields.DOI) || undefined;
       try {
-        const resolved = await resolveForItem(resolver!, {
+        const resolved = await awaitCandidate(resolveForItem(resolver!, {
           item: snapshot,
           url: sourceURL,
           doi: localDOI,
@@ -454,7 +503,7 @@ async function preflightBatchWith(
             });
             throwIfCancelled();
           },
-        });
+        }));
         throwIfCancelled();
         if (resolved.candidate) {
           completeItem({
@@ -471,7 +520,7 @@ async function preflightBatchWith(
         const status = resolved.terminalOutcome === "blocked"
           ? "blocked"
           : resolved.terminalOutcome === "not-applicable" ? "skipped" : "failed";
-        completeItem(emptyPreview(item, sourceURL, status, resolved.message || "没有安全候选", {
+        completeItem(emptyPreview(item, sourceURL, status, resolved.message || localized("没有可核对的更新内容", "No updates available to review"), {
           attempts: resolved.attempts,
           terminalOutcome: resolved.terminalOutcome,
           normalizedDOI: localDOI,
@@ -479,7 +528,12 @@ async function preflightBatchWith(
       } catch (error) {
         throwIfCancelled();
         if (error instanceof BatchPreflightCancelledError) throw error;
-        completeItem(emptyPreview(item, sourceURL, "failed", `候选解析失败：${errorMessage(error)}`, {
+        Zotero.debug(`[zmta] 候选解析失败：${errorMessage(error)}`);
+        const message = localized(
+          "无法获取或解析来源信息，本条目未更新。请检查来源或稍后重试。",
+          "Could not retrieve or interpret the source. This item was not updated. Check the source or try again later.",
+        );
+        completeItem(emptyPreview(item, sourceURL, "failed", message, {
           terminalOutcome: "no-safe-candidate",
           normalizedDOI: localDOI,
         }));
@@ -524,12 +578,15 @@ async function defaultGetItem(itemID: number): Promise<any> {
 
 function validateSelectionItem(selection: BatchItemSelection, item: any, appliedFields: ReadonlyMap<string, unknown> = new Map(), appliedCreators?: readonly CandidateCreator[]): void {
   if (!item || Number(item.id) !== selection.itemID || String(item.key || "") !== selection.itemKey) {
-    throw new Error("条目不存在或身份不匹配");
+    throw new Error(localized("条目不存在或身份不匹配", "The item no longer exists or its identity has changed."));
   }
-  if (!isBibliographicItem(item)) throw new Error("条目已不是普通书目条目");
+  if (!isBibliographicItem(item) || item.deleted || item.isFeedItem === true) throw new Error(localized("条目已不可用", "The item is no longer available."));
+  if (typeof item.isEditable === "function" && item.isEditable() !== true) {
+    throw new Error(localized("条目已变为只读，未写入", "The item is now read-only. Nothing was saved."));
+  }
   if (selection.candidate) {
     if (selection.candidate.identityReview?.required && !selection.identityConfirmed) {
-      throw new Error("候选身份尚未由用户确认，未写入");
+      throw new Error(localized("候选身份尚未由用户确认，未写入", "The source identity has not been confirmed. Nothing was saved."));
     }
     if (selection.candidate.identityReview?.required) {
       assertLocalIdentityEvidence(selection.candidate.identityReview, snapshotProviderItem(item).fields, appliedFields, appliedCreators);
@@ -540,21 +597,21 @@ function validateSelectionItem(selection: BatchItemSelection, item: any, applied
       || selection.candidate.item.itemKey !== selection.itemKey
       || selection.candidate.item.libraryID !== Number(item.libraryID)
     ) {
-      throw new Error("候选与当前条目身份不匹配");
+      throw new Error(localized("候选与当前条目身份不匹配", "The source does not match the current item."));
     }
     if (
       selection.candidate.itemType !== currentType
       || selection.candidate.item.itemType !== currentType
     ) {
-      throw new Error("审核后条目类型已变化，未写入");
+      throw new Error(localized("审核后条目类型已变化，未写入", "The item type changed after review. Nothing was saved."));
     }
     const candidateRoute = selection.candidate.evidence.routeId;
     if (selection.routeId && candidateRoute !== selection.routeId) {
-      throw new Error("候选路线与审核时不一致，未写入");
+      throw new Error(localized("候选路线与审核时不一致，未写入", "The source route has changed since review. Nothing was saved."));
     }
     const digest = createCandidateDigest(selection.candidate);
     if (selection.candidateDigest && digest !== selection.candidateDigest) {
-      throw new Error("候选内容与审核时不一致，未写入");
+      throw new Error(localized("候选内容与审核时不一致，未写入", "The source content has changed since review. Nothing was saved."));
     }
     const evidenceDOI = normalizeDOI(selection.candidate.evidence.identifiers
       .find((entry) => entry.type.toLowerCase() === "doi")?.value);
@@ -571,29 +628,29 @@ function validateSelectionItem(selection: BatchItemSelection, item: any, applied
         .flatMap((entry) => isbnValues(entry.value));
       if (!currentISBNs.some((value) => expectedISBNs.includes(value))
         || (localISBNs && JSON.stringify([...localISBNs].sort()) !== JSON.stringify([...currentISBNs].sort()))) {
-        throw new Error("审核后 ISBN 已变化或来源 ISBN 不一致，未写入");
+        throw new Error(localized("审核后 ISBN 已变化或来源 ISBN 不一致，未写入", "The ISBN changed after review or does not match the source. Nothing was saved."));
       }
     }
     if (expectedDOI) {
       const currentDOI = normalizeDOI(item.getField?.("DOI"));
       if (currentDOI !== expectedDOI || (evidenceDOI && evidenceDOI !== expectedDOI)) {
-        throw new Error("审核后 DOI 已变化或来源 DOI 不一致，未写入");
+        throw new Error(localized("审核后 DOI 已变化或来源 DOI 不一致，未写入", "The DOI changed after review or does not match the source. Nothing was saved."));
       }
     }
   }
   const currentURL = getItemURL(item);
   if (!selection.candidate || selection.candidate.providerId === "douban") {
     const expectedURL = appliedFields.has("url") ? String(appliedFields.get("url")) : selection.candidate?.evidence.sourceURL;
-    if (!currentURL || !extractDoubanSubject(currentURL)) throw new Error("条目不再具有豆瓣图书 URL");
+    if (!currentURL || !extractDoubanSubject(currentURL)) throw new Error(localized("条目不再具有豆瓣图书 URL", "The item no longer has a Douban Books URL."));
     if (expectedURL && !isSameDoubanBook(expectedURL, currentURL)) {
-      throw new Error("审核后豆瓣 subject 已变化，未写入");
+      throw new Error(localized("审核后豆瓣图书编号已变化，未写入", "The Douban book identifier changed after review. Nothing was saved."));
     }
   } else if (selection.candidate.evidence.routeId === "url.web") {
     if (
       !currentURL
       || normalizeHTTPURL(currentURL) !== normalizeHTTPURL(appliedFields.has("url") ? appliedFields.get("url") : selection.candidate.evidence.sourceURL)
     ) {
-      throw new Error("审核后来源 URL 已变化，未写入");
+      throw new Error(localized("审核后来源 URL 已变化，未写入", "The source URL changed after review. Nothing was saved."));
     }
   }
 }
@@ -703,13 +760,18 @@ export async function applyBatch(
   const results: BatchItemResult[] = [];
   // 私有快照不与UI或异步日志回调共享可变引用；后续 guard 与冻结计划使用同一份审核输入。
   const executionSelections: BatchItemSelection[] = JSON.parse(JSON.stringify(selections));
+  const complete = (result: BatchItemResult) => {
+    results.push(result);
+    try { dependencies.onItemComplete?.(JSON.parse(JSON.stringify(result)), results.length, executionSelections.length); }
+    catch (error) { Zotero.debug(`[zmta] 进度显示失败：${error}`); }
+  };
   for (const selection of executionSelections) {
     let item: any;
     try {
       item = await getItem(selection.itemID);
       validateSelectionItem(selection, item);
     } catch (error) {
-      results.push({
+      complete({
         itemID: selection.itemID,
         itemKey: selection.itemKey,
         title: selection.itemKey || String(selection.itemID),
@@ -738,9 +800,9 @@ export async function applyBatch(
         (_ref, currentItem, appliedFields, appliedCreators) => validateSelectionItem(selection, currentItem, appliedFields, appliedCreators),
       );
       const execution = await executor.execute(plan);
-      results.push(mapItemResult(execution.items[0], plan.items[0].operations));
+      complete(mapItemResult(execution.items[0], plan.items[0].operations));
     } catch (error) {
-      results.push({
+      complete({
         itemID: ref.itemID,
         itemKey: ref.itemKey,
         title: ref.title,
@@ -818,6 +880,51 @@ function retrySelection(
   };
 }
 
+/** 只将原失败且原先选择的操作交给再次审核；成功操作和新字段永不出现。 */
+export function buildRetryReviewPreview(original: BatchItemSelection, preview: BatchItemPreview, previous: BatchItemResult): BatchItemPreview {
+  const failed = failedIdentities(previous);
+  const wholeItem = previous.status === "failed" && previous.operations.length === 0;
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const fields = preview.fields.filter(field => original.fields.some(old => old.field === field.field)
+    && (wholeItem || failed.has(`field:${field.field}`))).map(field => ({ ...field,
+      defaultChecked: original.fields.some(old => old.field === field.field && same(old.local, field.local) && same(old.incoming, field.incoming)),
+    }));
+  const creators = original.creators && preview.creators && (wholeItem || failed.has("creators:creators:set"))
+    ? { ...preview.creators, defaultChecked: same(original.creators.local, preview.creators.local) && same(original.creators.incoming, preview.creators.incoming) } : undefined;
+  const attachments = preview.attachments.filter(candidate => original.attachments.some(old => old.batchOperationId === candidate.batchOperationId && same(old, candidate))
+    && (wholeItem || failed.has(`attachment:${candidate.batchOperationId}`)));
+  const notes = preview.notes.filter(candidate => original.notes.some(old => old.batchOperationId === candidate.batchOperationId && same(old, candidate))
+    && (wholeItem || failed.has(`note:${candidate.batchOperationId}`)));
+  if (preview.status === "ready" && !fields.length && !creators && !attachments.length && !notes.length) {
+    return { ...preview, status: "skipped", message: localized("此前失败的内容已变化或无需更新，无法安全匹配。请从原条目重新查看可更新内容。", "The content that failed previously has changed or no longer needs updating. Check the original item for updates again."), fields, creators, attachments, notes };
+  }
+  return { ...preview, fields, creators, attachments, notes };
+}
+
+function bindRetrySelections(previews: BatchItemPreview[], selected: BatchItemSelection[]): BatchItemSelection[] {
+  const seen = new Set<string>();
+  return selected.map(selection => {
+    const preview = previews.find(p => p.itemID === selection.itemID && p.itemKey === selection.itemKey && p.status === "ready");
+    if (!preview || seen.has(selection.itemKey) || preview.candidateDigest !== selection.candidateDigest
+      || (preview.identityReview?.required && !selection.identityConfirmed)) throw new Error(localized("重试选择不属于本次审核", "The retry selection does not belong to this review."));
+    seen.add(selection.itemKey);
+    const bind = <T>(available: T[], chosen: T[]): T[] => {
+      const used = new Set<number>();
+      return chosen.map(value => {
+        const index = available.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(value));
+        if (index < 0 || used.has(index)) throw new Error(localized("重试选择超出了原失败内容范围", "The retry selection includes content that did not fail originally."));
+        used.add(index);
+        return available[index];
+      });
+    };
+    if (selection.creators && JSON.stringify(selection.creators) !== JSON.stringify(preview.creators)) throw new Error(localized("重试作者选择超出范围", "The selected authors and contributors are outside the original failed content."));
+    return { ...selection, fields: bind(preview.fields, selection.fields),
+      creators: selection.creators ? preview.creators : undefined,
+      attachments: bind(preview.attachments, selection.attachments), notes: bind(preview.notes, selection.notes),
+      candidate: preview.candidate, attempts: preview.attempts, routeId: preview.routeId, normalizedDOI: preview.normalizedDOI };
+  }).filter(s => s.fields.length || s.creators || s.attachments.length || s.notes.length);
+}
+
 export async function retryFailedBatch(
   originalSelections: BatchItemSelection[],
   previousResult: BatchRunResult,
@@ -859,13 +966,25 @@ export async function retryFailedBatch(
     throw new BatchPreflightCancelledError(previews.length, items.length);
   }
   const previewsByKey = new Map(previews.map((preview) => [preview.itemKey, preview]));
-  const retries: BatchItemSelection[] = [];
-  for (const original of retryableOriginals) {
-    const previous = previousByKey.get(original.itemKey);
-    const preview = previewsByKey.get(original.itemKey);
-    if (!previous || !preview) continue;
-    const selection = retrySelection(original, preview, previous);
-    if (selection) retries.push(selection);
+  let retries: BatchItemSelection[] = [];
+  if (dependencies.review) {
+    const eligible = retryableOriginals.flatMap(original => {
+      const preview = previewsByKey.get(original.itemKey);
+      const previous = previousByKey.get(original.itemKey);
+      return preview && previous ? [buildRetryReviewPreview(original, preview, previous)] : [];
+    });
+    const reviewed = await dependencies.review(JSON.parse(JSON.stringify(eligible)));
+    if (reviewed === null) throw new BatchPreflightCancelledError(previews.length, items.length);
+    retries = bindRetrySelections(eligible, reviewed);
+    if (!retries.length) throw new BatchPreflightCancelledError(previews.length, items.length);
+  } else {
+    for (const original of retryableOriginals) {
+      const previous = previousByKey.get(original.itemKey);
+      const preview = previewsByKey.get(original.itemKey);
+      if (!previous || !preview) continue;
+      const selection = retrySelection(original, preview, previous);
+      if (selection) retries.push(selection);
+    }
   }
   await dependencies.onResolvedSelections?.(retries);
   if (dependencies.signal?.aborted) {

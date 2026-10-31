@@ -534,6 +534,22 @@ export class BatchJournal {
     return deepFreeze(inspections);
   }
 
+  /** 全部可读历史仅供展示；不改变“最近可撤销批次”的选择规则。 */
+  async getHistoryBatches(): Promise<BatchInspectionBatch[]> {
+    await this.queue;
+    const records = parseRecords(this.pendingSerialized !== null ? this.pendingSerialized : await this.storage.read());
+    const ordered = records.map((record, index) => ({ record, index })).sort((a, b) => {
+      const aIncomplete = a.record.status === "running" || !a.record.completedAt;
+      const bIncomplete = b.record.status === "running" || !b.record.completedAt;
+      if (aIncomplete !== bIncomplete) return aIncomplete ? -1 : 1;
+      if (aIncomplete) return b.record.createdAt.localeCompare(a.record.createdAt) || b.index - a.index;
+      // 与撤销使用同一完成序号；旧日志以完成时间和写入位置补序。
+      return (b.record.completedOrder || 0) - (a.record.completedOrder || 0)
+        || String(b.record.completedAt).localeCompare(String(a.record.completedAt)) || b.index - a.index;
+    });
+    return deepFreeze(ordered.map(({ record }) => this.toInspectionBatch(record)));
+  }
+
   async getLatestUndoableBatch(): Promise<BatchJournalRecord | null> {
     const records = await this.readRecords();
     const latest = this.latestTerminal(records);
@@ -542,7 +558,7 @@ export class BatchJournal {
     return this.hasAppliedOperations(latest) ? clone(latest) : null;
   }
 
-  async rollbackLatest(api: BatchRollbackAPI): Promise<BatchRollbackResult | null> {
+  async rollbackLatest(api: BatchRollbackAPI, options: { expectedBatchId?: string; onItemComplete?: (title: string, completed: number, total: number) => void } = {}): Promise<BatchRollbackResult | null> {
     return this.mutate(async (records, persist) => {
       const record = this.latestTerminal(records);
       this.assertNoNewerIncomplete(records, record);
@@ -552,6 +568,8 @@ export class BatchJournal {
         record.status === "rollback-partial" ||
         !this.hasAppliedOperations(record)
       ) return null;
+
+      if (options.expectedBatchId && record.batchId !== options.expectedBatchId) throw new Error("最近一次更新已经变化，请重新确认撤销范围");
 
       const result: BatchRollbackResult = {
         batchId: record.batchId,
@@ -709,6 +727,8 @@ export class BatchJournal {
         }
 
         if (operations.length > 0) result.items.push(this.rollbackItemResult(journalItem, operations));
+        try { options.onItemComplete?.(journalItem.title, record.items.indexOf(journalItem) + 1, record.items.length); }
+        catch { /* 显示失败不能更改撤销结果 */ }
       }
 
       record.status = result.conflicts === 0 && result.failed === 0 ? "rolled-back" : "rollback-partial";

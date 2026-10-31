@@ -1,6 +1,6 @@
 {
   "name": "zotero-update-metadata",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Zotero 插件：按已有 URL 或唯一标识符审核并更新条目元数据，全程留痕",
   "repository": {
     "type": "git",
@@ -12,14 +12,16 @@
     "start": "zotero-plugin serve",
     "start:live": "ZMTA_LIVE_UPSTREAM=1 zotero-plugin serve",
     "test": "zotero-plugin test",
-    "test:core": "node scripts/test-core.mjs",
+    "test:core": "node --test test/hostTestDataGuard.test.mjs && node scripts/test-core.mjs",
     "check": "npm run build && bash specs/check.sh src/",
     "release": "python3 scripts/release.py",
     "test:ui": "node scripts/test-ui.mjs",
     "release:prepare": "python3 scripts/prepare-release.py prepare",
     "release:verify": "python3 scripts/prepare-release.py verify",
     "ci": "python3 scripts/prepare-release.py check",
-    "release:check": "python3 scripts/check-release.py"
+    "release:check": "python3 scripts/check-release.py",
+    "pretest": "node scripts/guard-host-test-data.mjs",
+    "test:manual": "node scripts/open-manual-test.mjs"
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",
