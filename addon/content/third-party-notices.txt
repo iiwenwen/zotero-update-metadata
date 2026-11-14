@@ -2,7 +2,7 @@
 
 本文件只记录第三方依赖的许可，不代替负责人对本项目公开授权的决定。
 
-zotero-plugin-toolkit 5.2.0
+zotero-plugin-toolkit 6.0.0
 来源：https://github.com/windingwind/zotero-plugin-toolkit
 以下为该锁定包随附的 MIT 许可证：
 

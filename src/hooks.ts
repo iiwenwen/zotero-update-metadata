@@ -1,7 +1,6 @@
 import { PLUGIN_ID, PLUGIN_NAME } from "./config";
 // 生命周期 hooks（参考 template src/hooks.ts）
-// 注意：toolkit 5.2.0 有 MenuManager（见官方文档 windingwind.github.io/zotero-plugin-toolkit/）。
-// 当前菜单用手写 Zotero 原生 MenuManager，后续应按使用源改用 toolkit MenuManager（待修正）。
+// 注意：toolkit 6.0.0 不含菜单工具，菜单直接使用 Zotero 原生 MenuManager。
 import {
   getBatchRuntimeCapabilities,
   initializeBatchRuntimeState,
